@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Kaggle data stays out of Git (download it from the competition page).
+data/raw/*
+!data/raw/.gitkeep
+
+# Generated artifacts are recreated by the pipeline.
+models/*
+!models/.gitkeep
+reports/*
+!reports/.gitkeep
