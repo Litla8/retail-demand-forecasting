@@ -7,7 +7,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 ## Status
 
 - [x] Step 1: Business understanding (project brief, metrics, config)
-- [ ] Step 2: Data preparation
+- [x] Step 2: Data preparation (validation, complete store-item-day grid, calendar features, time-based windows)
 - [ ] Step 3: Time series EDA
 - [ ] Step 4: Baseline models
 - [ ] Step 5: Statistical models
@@ -36,12 +36,20 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 pytest
+python -m forecast.prepare    # validate, clean and write data/processed/sales_prepared.parquet
 ```
+
+`python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
+days, memory before and after downcasting, validation windows). Flags: `--raw-dir`, `--processed-dir`,
+`--reports-dir`, `--log-level DEBUG`.
 
 ## Structure
 
 ```
-forecast/     config.py (all settings) and metrics.py (WAPE, sMAPE, MAE, RMSE, bias, error by group)
+forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias, error by group),
+              data.py (load, validate, clean, complete grid), features.py (calendar features),
+              splits.py (time-based validation windows), prepare.py (Step 2 pipeline)
 tests/        pytest suite
 data/raw/     Kaggle files (git-ignored)
+data/processed/  prepared parquet (git-ignored, recreated by forecast.prepare)
 ```

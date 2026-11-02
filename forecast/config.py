@@ -1,7 +1,8 @@
 """Central configuration for the demand-forecasting project.
 
 Every decision made in the Step 1 project brief (horizon, granularity, metrics,
-validation windows, success target) lives here so later modules never hardcode them.
+validation windows, success target) and every Step 2 data-preparation rule lives here so
+later modules never hardcode them.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Tuple
 
 RANDOM_STATE: int = 42
+NEGATIVE_SALES_POLICIES: Tuple[str, ...] = ("raise", "clip")
 
 
 @dataclass(frozen=True)
@@ -19,13 +21,24 @@ class PathsConfig:
     train_csv: Path = Path("data/raw/train.csv")
     test_csv: Path = Path("data/raw/test.csv")
     sample_submission_csv: Path = Path("data/raw/sample_submission.csv")
+    processed_dir: Path = Path("data/processed")
     models_dir: Path = Path("models")
     reports_dir: Path = Path("reports")
+
+    @property
+    def prepared_parquet(self) -> Path:
+        """Prepared store-item-day table (train + test horizon) written by Step 2."""
+        return self.processed_dir / "sales_prepared.parquet"
+
+    @property
+    def quality_report(self) -> Path:
+        """JSON data-quality report written by Step 2."""
+        return self.reports_dir / "data_quality.json"
 
 
 @dataclass(frozen=True)
 class ForecastConfig:
-    """Business and evaluation settings from the project brief.
+    """Business, evaluation and data-preparation settings.
 
     Attributes:
         horizon_days: Forecast horizon. 90 days matches the Kaggle test period
@@ -34,15 +47,20 @@ class ForecastConfig:
             the 28-day view from the course brief is reported inside the 90-day forecast.
         granularity: Columns that identify one series (store x item = 500 series).
         primary_metric: Metric used to choose models (WAPE is robust and volume-weighted).
-        validation_window_ends: Last day of each 90-day validation window. The Q1 window
-            matches the season of the test period; the Q4 window is the most recent data.
+        validation_window_ends: Last day of each validation window of ``horizon_days`` days.
+            The Q1 window matches the season of the test period; Q4 is the most recent data.
+        min_history_days: Minimum training history required before every validation window
+            (728 days gives two full years, enough for the 364-day benchmark and yearly lags).
         benchmark: Baseline every model must beat (same weekday one year earlier).
         target_improvement_pct: Required WAPE improvement over the benchmark.
+        negative_sales: What to do with negative sales: "raise" (default, fail loudly) or
+            "clip" to zero. Zero sales are valid demand and are always kept.
     """
 
     random_state: int = RANDOM_STATE
     date_col: str = "date"
     target_col: str = "sales"
+    id_col: str = "id"
     granularity: Tuple[str, ...] = ("store", "item")
     horizon_days: int = 90
     horizon_buckets: Tuple[int, ...] = (28, 60, 90)
@@ -54,8 +72,10 @@ class ForecastConfig:
         "2017-09-30",
         "2017-12-31",
     )
+    min_history_days: int = 728
     benchmark: str = "seasonal_naive_364"
     target_improvement_pct: Tuple[float, float] = (10.0, 20.0)
+    negative_sales: str = "raise"
     paths: PathsConfig = field(default_factory=PathsConfig)
 
     def __post_init__(self) -> None:
@@ -69,3 +89,7 @@ class ForecastConfig:
         low, high = self.target_improvement_pct
         if not 0 <= low <= high:
             raise ValueError("target_improvement_pct must be an ordered (low, high) pair")
+        if self.negative_sales not in NEGATIVE_SALES_POLICIES:
+            raise ValueError(f"negative_sales must be one of {NEGATIVE_SALES_POLICIES}")
+        if self.min_history_days < 1:
+            raise ValueError("min_history_days must be positive")
