@@ -8,7 +8,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 
 - [x] Step 1: Business understanding (project brief, metrics, config)
 - [x] Step 2: Data preparation (validation, complete store-item-day grid, calendar features, time-based windows)
-- [ ] Step 3: Time series EDA
+- [x] Step 3: Time series EDA (trend, seasonality, holidays, intermittency, ACF/PACF, STL, stationarity)
 - [ ] Step 4: Baseline models
 - [ ] Step 5: Statistical models
 - [ ] Step 6: Machine learning (LightGBM)
@@ -27,6 +27,33 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - **Benchmark to beat:** the same weekday one year earlier (364-day seasonal naive).
 - **Target:** 10-20% lower WAPE than the benchmark, stable across windows.
 
+## Findings from the time series EDA (Step 3)
+
+![Seasonality](docs/images/eda_seasonality.png)
+
+- **Trend:** yearly sales grew 15.0% (2014), 4.4% (2015), 8.6% (2016) and 3.6% (2017). The 2017 growth is almost
+  the same for every series (median 3.7%, 5th-95th percentile 1.9-5.4%), so one shared trend fits all of them.
+- **Weekly pattern:** Monday is the low (0.79x the average) and Sunday the high (1.19x), a 50% swing, identical
+  every year.
+- **Yearly pattern is a staircase:** the level is flat inside a month (0.2% drift) and jumps by about 11.6% on
+  average at every month boundary (January 0.68x, July 1.28x, December back down to 0.75x). Smooth yearly curves
+  (Fourier terms, Prophet's default) will blur these steps, so month needs to be an explicit feature.
+- **One seasonal shape for all series:** every series' weekday and month profile correlates at least 0.988 with the
+  average profile, which supports a single global model.
+- **No holiday effects:** all 18 tested holidays are within about 1% of a normal day (ordinary noise is 0.7%), so no
+  holiday features are needed. A first version of this test showed a fake +15% effect on Thanksgiving: the
+  comparison days fell in December, where sales drop 30% because of the month step. Comparing each day with the
+  same weekday in the same month fixed it.
+- **No intermittent demand:** all 500 series are classed smooth; there is one zero-sales day in 913,000 rows.
+- **Autocorrelation:** lag 7 is 0.96 and lag 364 is 0.72 for total sales, but lag 365 is only 0.53, so the yearly
+  cycle lines up on the same weekday (364 days), which supports the 364-day benchmark.
+
+![ACF and PACF](docs/images/eda_acf_pacf.png)
+
+Modelling implications: use month and day-of-week as explicit features, train one global model across all series,
+model sales as level x seasonality x trend (log scale), add no holiday features, and skip intermittent-demand
+methods.
+
 ## Setup
 
 Download `train.csv`, `test.csv` and `sample_submission.csv` from the Kaggle competition into `data/raw/`.
@@ -37,6 +64,7 @@ python -m venv .venv
 pip install -r requirements.txt
 pytest
 python -m forecast.prepare    # validate, clean and write data/processed/sales_prepared.parquet
+python -m forecast.eda        # figures in reports/figures and reports/eda_summary.json
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing

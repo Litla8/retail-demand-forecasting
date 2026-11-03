@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from forecast.config import ForecastConfig, PathsConfig
+from forecast.config import EdaConfig, ForecastConfig, PathsConfig
 
 
 def test_defaults_match_the_project_brief() -> None:
@@ -22,6 +22,21 @@ def test_derived_paths() -> None:
     paths = PathsConfig()
     assert paths.prepared_parquet == Path("data/processed/sales_prepared.parquet")
     assert paths.quality_report == Path("reports/data_quality.json")
+    assert paths.figures_dir == Path("reports/figures")
+    assert paths.eda_summary == Path("reports/eda_summary.json")
+
+
+def test_eda_defaults_and_validation() -> None:
+    eda = EdaConfig()
+    assert eda.seasonal_periods == (7, 365) and eda.adi_threshold == 1.32 and eda.cv2_threshold == 0.49
+    with pytest.raises(ValueError, match="strictly increasing"):
+        replace(eda, seasonal_periods=(365, 7))
+    with pytest.raises(ValueError, match="at least 2"):
+        replace(eda, seasonal_periods=(1, 7))
+    with pytest.raises(ValueError, match="significance_level"):
+        replace(eda, significance_level=1.5)
+    with pytest.raises(ValueError, match="positive"):
+        replace(eda, stationarity_sample_series=0)
 
 
 def test_inconsistent_settings_fail_loudly() -> None:

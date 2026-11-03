@@ -35,6 +35,56 @@ class PathsConfig:
         """JSON data-quality report written by Step 2."""
         return self.reports_dir / "data_quality.json"
 
+    @property
+    def figures_dir(self) -> Path:
+        """Folder for every generated plot."""
+        return self.reports_dir / "figures"
+
+    @property
+    def eda_summary(self) -> Path:
+        """JSON summary of the Step 3 time series EDA."""
+        return self.reports_dir / "eda_summary.json"
+
+
+@dataclass(frozen=True)
+class EdaConfig:
+    """Settings for the Step 3 time series EDA.
+
+    Attributes:
+        seasonal_periods: Seasonal cycles to decompose (weekly and yearly, in days).
+        acf_lags_short / acf_lags_long / pacf_lags: Lags shown in the ACF/PACF plots.
+        holiday_material_pct / holiday_material_z: A holiday counts as material only if its
+            average effect exceeds this percentage AND this many standard errors.
+        adi_threshold / cv2_threshold: Syntetos-Boylan cut-offs for intermittent demand.
+        stationarity_sample_series: Number of random series tested with ADF/KPSS.
+        significance_level: Alpha for the stationarity tests.
+        figure_dpi: Resolution of the saved figures.
+    """
+
+    seasonal_periods: Tuple[int, ...] = (7, 365)
+    acf_lags_short: int = 42
+    acf_lags_long: int = 400
+    pacf_lags: int = 42
+    holiday_material_pct: float = 3.0
+    holiday_material_z: float = 3.0
+    adi_threshold: float = 1.32
+    cv2_threshold: float = 0.49
+    stationarity_sample_series: int = 50
+    significance_level: float = 0.05
+    figure_dpi: int = 150
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if not self.seasonal_periods or list(self.seasonal_periods) != sorted(set(self.seasonal_periods)):
+            raise ValueError("seasonal_periods must be strictly increasing")
+        if min(self.seasonal_periods) < 2:
+            raise ValueError("seasonal periods must be at least 2 days")
+        if min(self.acf_lags_short, self.acf_lags_long, self.pacf_lags,
+               self.stationarity_sample_series) < 1:
+            raise ValueError("lag and sample settings must be positive")
+        if not 0.0 < self.significance_level < 1.0:
+            raise ValueError("significance_level must be strictly between 0 and 1")
+
 
 @dataclass(frozen=True)
 class ForecastConfig:
@@ -77,6 +127,7 @@ class ForecastConfig:
     target_improvement_pct: Tuple[float, float] = (10.0, 20.0)
     negative_sales: str = "raise"
     paths: PathsConfig = field(default_factory=PathsConfig)
+    eda: EdaConfig = field(default_factory=EdaConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""
