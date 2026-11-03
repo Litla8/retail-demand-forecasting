@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from forecast.config import EdaConfig, ForecastConfig, PathsConfig
+from forecast.config import BASELINE_NAMES, BaselineConfig, EdaConfig, ForecastConfig, PathsConfig
 
 
 def test_defaults_match_the_project_brief() -> None:
@@ -24,6 +24,14 @@ def test_derived_paths() -> None:
     assert paths.quality_report == Path("reports/data_quality.json")
     assert paths.figures_dir == Path("reports/figures")
     assert paths.eda_summary == Path("reports/eda_summary.json")
+    assert paths.baseline_results == Path("reports/baseline_results.csv")
+    assert paths.baseline_summary == Path("reports/baseline_summary.json")
+
+
+def test_baseline_defaults() -> None:
+    baselines = BaselineConfig()
+    assert baselines.names == BASELINE_NAMES and "seasonal_naive_364" in baselines.names
+    assert baselines.growth_window == 91 and ForecastConfig().benchmark in baselines.names
 
 
 def test_eda_defaults_and_validation() -> None:

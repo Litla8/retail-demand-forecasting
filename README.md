@@ -9,7 +9,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 1: Business understanding (project brief, metrics, config)
 - [x] Step 2: Data preparation (validation, complete store-item-day grid, calendar features, time-based windows)
 - [x] Step 3: Time series EDA (trend, seasonality, holidays, intermittency, ACF/PACF, STL, stationarity)
-- [ ] Step 4: Baseline models
+- [x] Step 4: Baseline models (8 baselines on 4 validation windows, noise-floor estimate)
 - [ ] Step 5: Statistical models
 - [ ] Step 6: Machine learning (LightGBM)
 - [ ] Step 7: Tuning and ensembling
@@ -25,7 +25,8 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - **Validation:** time-based only. 90-day windows ending 2017-03-31 (same season as the test period),
   2017-06-30, 2017-09-30 and 2017-12-31.
 - **Benchmark to beat:** the same weekday one year earlier (364-day seasonal naive).
-- **Target:** 10-20% lower WAPE than the benchmark, stable across windows.
+- **Target:** 10-20% lower WAPE than the benchmark, stable across windows. Step 4 showed that a simple baseline
+  already reaches this, so later models are judged against the best baseline instead (see below).
 
 ## Findings from the time series EDA (Step 3)
 
@@ -59,6 +60,42 @@ Modelling implications: use month and day-of-week as explicit features, train on
 model sales as level x seasonality x trend (log scale), add no holiday features, and skip intermittent-demand
 methods.
 
+## Baseline results (Step 4)
+
+Every baseline forecasts the 90 days of each validation window using only the history before it. WAPE in percent
+(lower is better); the last column is the improvement over the 364-day benchmark (negative = worse).
+
+| Baseline | 2017-03-31 | 2017-06-30 | 2017-09-30 | 2017-12-31 | Mean | vs benchmark |
+|---|---|---|---|---|---|---|
+| naive (last day) | 22.21 | 18.07 | 34.63 | 24.29 | 24.80 | -70.2% |
+| moving average (28 days) | 18.93 | 21.90 | 16.04 | 21.51 | 19.59 | -33.5% |
+| seasonal naive (7 days) | 19.57 | 21.07 | 16.32 | 21.32 | 19.57 | -33.2% |
+| seasonal moving average (4 weeks) | 16.94 | 20.76 | 13.42 | 19.72 | 17.71 | -20.7% |
+| **seasonal naive (364 days), the benchmark** | 16.43 | 13.66 | 13.61 | 15.29 | 14.74 | 0% |
+| 364 days x growth | 17.66 | 13.70 | 13.57 | 15.27 | 15.05 | -1.9% |
+| **month-weekday profile** | 12.91 | 10.89 | 10.77 | 12.01 | **11.65** | **+21.0%** |
+| month-weekday profile x growth | 13.66 | 10.72 | 10.57 | 11.81 | 11.69 | +20.9% |
+| *estimated noise floor* | 11.43 | 9.50 | 9.38 | 10.52 | *10.21* | |
+
+![WAPE by window](docs/images/baseline_wape_by_window.png)
+
+- **The month-weekday profile is the baseline to beat.** It forecasts each day as last year's average for the same
+  month and weekday. That one line of reasoning follows directly from the EDA (flat level inside a month), and it
+  cuts WAPE from 14.74% to 11.65%, a 21% improvement that is stable across windows (standard deviation 0.88). Its
+  sMAPE, the Kaggle metric, is 13.4.
+- **Why the 364-day benchmark loses:** it copies one day of last year, so it inherits that day's random noise on top
+  of the noise in the day being forecast. Averaging the 4-5 matching days removes most of the first part.
+- **Accuracy does not fade with the horizon:** the profile's WAPE is 11.8%, 11.6% and 11.7% for days 1-28, 29-60 and
+  61-90, so a 90-day forecast is as accurate as a 28-day one (the level is predictable; the error is daily noise).
+- **Growth scaling fixes bias but not accuracy.** Without it the profile under-forecasts by about 3.7% in every
+  window. With it the bias is about zero in three windows, but it overshoots by 4.9% in the Q1-2017 window, because
+  growth had slowed since the quarter used to measure it. WAPE is the same either way (11.65% vs 11.69%).
+- **Little room is left:** the noise floor (the best any forecaster could do on this daily noise) is estimated at
+  10.2%, so at most about 12% more improvement over the best baseline is possible. The 10-20% target against the
+  benchmark corresponds to 13.1-14.8% WAPE in the Q1-2017 window; the profile already gets 12.9%.
+- **Method note:** the growth window (91 days) was picked after comparing 28, 91, 182 and 364 days on these windows
+  (mean WAPE within 0.2 points), so the growth baselines are very slightly tuned on the validation data.
+
 ## Setup
 
 Download `train.csv`, `test.csv` and `sample_submission.csv` from the Kaggle competition into `data/raw/`.
@@ -70,6 +107,7 @@ pip install -r requirements.txt
 pytest
 python -m forecast.prepare    # validate, clean and write data/processed/sales_prepared.parquet
 python -m forecast.eda        # figures in reports/figures and reports/eda_summary.json
+python -m forecast.run_baselines   # backtest all baselines: reports/baseline_results.csv and summary
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
@@ -87,7 +125,8 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               data.py (load, validate, clean, complete grid), features.py (calendar features),
               splits.py (time-based validation windows), prepare.py (Step 2 pipeline),
               holidays.py (holiday calendar), timeseries.py (ACF/PACF, MSTL, ADF/KPSS),
-              eda.py (Step 3 pipeline), logging_utils.py
+              eda.py (Step 3 pipeline), wide.py (series x day matrices), baselines.py (8 baselines),
+              backtest.py (scoring, noise floor), run_baselines.py (Step 4 pipeline), logging_utils.py
 tests/        pytest suite
 docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)
