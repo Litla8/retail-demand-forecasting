@@ -47,6 +47,11 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - **No intermittent demand:** all 500 series are classed smooth; there is one zero-sales day in 913,000 rows.
 - **Autocorrelation:** lag 7 is 0.96 and lag 364 is 0.72 for total sales, but lag 365 is only 0.53, so the yearly
   cycle lines up on the same weekday (364 days), which supports the 364-day benchmark.
+- **Decomposition and stationarity:** an MSTL decomposition of total sales gives trend strength 0.99, weekly
+  strength 0.99 and yearly strength 0.997 (residuals are small for the total; individual series are noisier). The
+  level is not stationary (KPSS p = 0.01), but a 7-day difference makes it stationary (ADF p < 0.001, KPSS
+  p >= 0.10). The same holds for single series: in a random sample of 50, none is stationary in level and all 50
+  are stationary after a 7-day difference, so ARIMA-family models start from a seasonal difference of 7 days.
 
 ![ACF and PACF](docs/images/eda_acf_pacf.png)
 
@@ -71,13 +76,21 @@ python -m forecast.eda        # figures in reports/figures and reports/eda_summa
 days, memory before and after downcasting, validation windows). Flags: `--raw-dir`, `--processed-dir`,
 `--reports-dir`, `--log-level DEBUG`.
 
+`python -m forecast.eda` reads the prepared parquet and writes the figures and `reports/eda_summary.json`. Flags:
+`--prepared-path`, `--reports-dir`, `--log-level` and `--skip-statsmodels` (skips the MSTL decomposition and the
+ADF/KPSS tests).
+
 ## Structure
 
 ```
 forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias, error by group),
               data.py (load, validate, clean, complete grid), features.py (calendar features),
-              splits.py (time-based validation windows), prepare.py (Step 2 pipeline)
+              splits.py (time-based validation windows), prepare.py (Step 2 pipeline),
+              holidays.py (holiday calendar), timeseries.py (ACF/PACF, MSTL, ADF/KPSS),
+              eda.py (Step 3 pipeline), logging_utils.py
 tests/        pytest suite
+docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)
 data/processed/  prepared parquet (git-ignored, recreated by forecast.prepare)
+reports/      generated figures and JSON summaries (git-ignored)
 ```
