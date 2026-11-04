@@ -1,0 +1,3 @@
+# Optional: only needed for the Prophet models in Step 5 (python -m forecast.run_statistical).
+# Kept separate because Prophet is a large install that can be awkward on some systems.
+prophet>=1.1.5

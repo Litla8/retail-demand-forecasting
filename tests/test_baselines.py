@@ -11,6 +11,8 @@ from forecast.config import BaselineConfig
 DAYS = pd.date_range("2014-01-01", "2016-12-31", freq="D")  # 1,096 days, ends on a Saturday
 HISTORY_DATES = DAYS
 FUTURE = pd.date_range("2017-01-01", periods=10, freq="D")
+MONTH_LEVEL = np.arange(1, 13) * 10.0
+WEEKDAY_FACTOR = 1 + np.arange(7) / 10
 
 
 def _ramp() -> np.ndarray:
@@ -71,6 +73,17 @@ def test_month_weekday_profile_returns_last_years_cell_mean() -> None:
     assert np.allclose(forecast[0], expected)  # last year's level and weekday factor, noise-free
     with_growth = B.month_weekday_profile_growth(history, DAYS, FUTURE, window=91)
     assert np.allclose(with_growth, forecast * B.growth_ratio(history, 91)[:, None])  # profile x growth factor
+
+
+def test_multi_year_profile_follows_a_steadily_growing_staircase() -> None:
+    year_growth = 1.1 ** (DAYS.year.to_numpy() - 2014)  # every year is 10% above the one before
+    pattern = MONTH_LEVEL[DAYS.month.to_numpy() - 1] * WEEKDAY_FACTOR[DAYS.dayofweek.to_numpy()]
+    history = np.tile(pattern * year_growth, (2, 1))
+    truth = (MONTH_LEVEL[FUTURE.month.to_numpy() - 1] * WEEKDAY_FACTOR[FUTURE.dayofweek.to_numpy()]) * 1.1 ** 3
+    forecast = B.month_weekday_profile_multi_year(history, DAYS, FUTURE, years=2, window=91)
+    assert np.allclose(forecast[0], truth, rtol=0.05)  # both past years point to the same 2017 level
+    with pytest.raises(ValueError, match="year\\(s\\) back"):
+        B.month_weekday_profile_multi_year(history, DAYS, FUTURE, years=5, window=91)
 
 
 def test_profile_needs_a_matching_cell_last_year() -> None:

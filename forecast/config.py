@@ -55,6 +55,16 @@ class PathsConfig:
         """JSON summary of the Step 4 baseline backtest."""
         return self.reports_dir / "baseline_summary.json"
 
+    @property
+    def statistical_results(self) -> Path:
+        """CSV with every statistical model x window x horizon-bucket score (Step 5)."""
+        return self.reports_dir / "statistical_results.csv"
+
+    @property
+    def statistical_summary(self) -> Path:
+        """JSON summary of the Step 5 statistical-model backtest."""
+        return self.reports_dir / "statistical_summary.json"
+
 
 @dataclass(frozen=True)
 class EdaConfig:
@@ -105,6 +115,7 @@ BASELINE_NAMES: Tuple[str, ...] = (
     "seasonal_naive_364_growth",
     "month_weekday_profile",
     "month_weekday_profile_growth",
+    "month_weekday_profile_multi_year",
 )
 
 
@@ -120,20 +131,77 @@ class BaselineConfig:
             same days 364 days earlier) for the growth-adjusted baselines. 91 days (one
             quarter, about the forecast horizon) was chosen after comparing 28, 91, 182 and
             364 days on the validation windows; the mean WAPE differed by under 0.2 points.
+        profile_years: Past years pooled by the multi-year month-weekday profile. 2 and 3 scored the
+            same on average; 2 was better in the Q1 window, which is the season of the test period.
     """
 
     names: Tuple[str, ...] = BASELINE_NAMES
     moving_average_window: int = 28
     seasonal_weeks: int = 4
     growth_window: int = 91
+    profile_years: int = 2
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""
         unknown = [n for n in self.names if n not in BASELINE_NAMES]
         if unknown or not self.names:
             raise ValueError(f"names must be a non-empty subset of {BASELINE_NAMES}; got {unknown}")
-        if min(self.moving_average_window, self.seasonal_weeks, self.growth_window) < 1:
+        if min(self.moving_average_window, self.seasonal_weeks, self.growth_window, self.profile_years) < 1:
             raise ValueError("window settings must be positive")
+
+
+STATISTICAL_MODEL_NAMES: Tuple[str, ...] = (
+    "holt_winters",
+    "sarima",
+    "sarimax_month",
+    "prophet_default",
+    "prophet_month",
+    "prophet_month_holidays",
+)
+
+
+@dataclass(frozen=True)
+class StatisticalConfig:
+    """Settings for the Step 5 statistical models.
+
+    These models are fitted one series at a time and are slow, so they run on a small sample of
+    series chosen at evenly spaced sales volumes and are compared with the baselines on those
+    same series.
+
+    Attributes:
+        models: Which models to run.
+        n_series: Number of sampled series.
+        ets_fit_days / sarima_fit_days / prophet_fit_days: Most recent days used to fit each family.
+        sarima_order / sarima_seasonal_order: (p, d, q) and (P, D, Q, s) for SARIMA(X). The weekly
+            seasonal difference (D = 1, s = 7) follows from the Step 3 stationarity tests.
+        sarima_maxiter: Optimiser iterations per SARIMA fit.
+    """
+
+    models: Tuple[str, ...] = STATISTICAL_MODEL_NAMES
+    n_series: int = 10
+    ets_fit_days: int = 730
+    sarima_fit_days: int = 730
+    prophet_fit_days: int = 1460
+    sarima_order: Tuple[int, int, int] = (1, 0, 1)
+    sarima_seasonal_order: Tuple[int, int, int, int] = (1, 1, 1, 7)
+    sarima_maxiter: int = 50
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        unknown = [m for m in self.models if m not in STATISTICAL_MODEL_NAMES]
+        if unknown or not self.models:
+            raise ValueError(f"models must be a non-empty subset of {STATISTICAL_MODEL_NAMES}; got {unknown}")
+        if self.n_series < 1:
+            raise ValueError("n_series must be positive")
+        if self.ets_fit_days < 28:
+            raise ValueError("ets_fit_days must be at least 28")
+        # Month dummies need every month present in the fit window, so it must cover a full year.
+        if min(self.sarima_fit_days, self.prophet_fit_days) < 400:
+            raise ValueError("sarima_fit_days and prophet_fit_days must be at least 400")
+        if len(self.sarima_order) != 3 or len(self.sarima_seasonal_order) != 4:
+            raise ValueError("sarima_order needs 3 values and sarima_seasonal_order 4")
+        if self.sarima_seasonal_order[3] != 7 or self.sarima_maxiter < 1:
+            raise ValueError("the seasonal period must be 7 and sarima_maxiter positive")
 
 
 @dataclass(frozen=True)
@@ -179,6 +247,7 @@ class ForecastConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     eda: EdaConfig = field(default_factory=EdaConfig)
     baselines: BaselineConfig = field(default_factory=BaselineConfig)
+    statistical: StatisticalConfig = field(default_factory=StatisticalConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""

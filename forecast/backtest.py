@@ -119,7 +119,7 @@ def summarize_backtest(scores: pd.DataFrame, cfg: ForecastConfig, floor_by_windo
         }
     by_horizon = (scores[scores["scope"] != "all"].groupby(["baseline", "scope"])["wape"].mean().round(3)
                   .unstack("scope").to_dict(orient="index"))
-    best = str(wape_table.mean(axis=1).idxmin())
+    best = str(wape_table.mean(axis=1).idxmin())  # best of everything that was run
     floor_mean = float(np.mean(list(floor_by_window.values())))
     best_wape = per_baseline[best]["mean_wape"]
     return {
@@ -127,7 +127,7 @@ def summarize_backtest(scores: pd.DataFrame, cfg: ForecastConfig, floor_by_windo
         "benchmark": benchmark,
         "baselines": per_baseline,
         "wape_by_horizon_bucket": by_horizon,
-        "best_baseline": best,
+        "best_model": best,
         "target": {
             "improvement_pct_range": [low, high],
             "wape_needed_by_window": {w: {"for_low": round(float(v) * (1 - low / 100), 3),
@@ -135,6 +135,6 @@ def summarize_backtest(scores: pd.DataFrame, cfg: ForecastConfig, floor_by_windo
                                       for w, v in bench.items()},
         },
         "noise_floor": {"by_window": {k: round(v, 3) for k, v in floor_by_window.items()}, "mean": round(floor_mean, 3)},
-        "headroom": {"best_baseline_mean_wape": best_wape, "estimated_floor_mean_wape": round(floor_mean, 3),
+        "headroom": {"best_model_mean_wape": best_wape, "estimated_floor_mean_wape": round(floor_mean, 3),
                      "max_further_improvement_pct": round(100 * (1 - floor_mean / best_wape), 2)},
     }

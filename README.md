@@ -9,8 +9,8 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 1: Business understanding (project brief, metrics, config)
 - [x] Step 2: Data preparation (validation, complete store-item-day grid, calendar features, time-based windows)
 - [x] Step 3: Time series EDA (trend, seasonality, holidays, intermittency, ACF/PACF, STL, stationarity)
-- [x] Step 4: Baseline models (8 baselines on 4 validation windows, noise-floor estimate)
-- [ ] Step 5: Statistical models
+- [x] Step 4: Baseline models (9 baselines on 4 validation windows, noise-floor estimate)
+- [x] Step 5: Statistical models (Holt-Winters, SARIMA(X) and Prophet on a 10-series sample)
 - [ ] Step 6: Machine learning (LightGBM)
 - [ ] Step 7: Tuning and ensembling
 - [ ] Step 8: Business application
@@ -73,28 +73,73 @@ Every baseline forecasts the 90 days of each validation window using only the hi
 | seasonal moving average (4 weeks) | 16.94 | 20.76 | 13.42 | 19.72 | 17.71 | -20.7% |
 | **seasonal naive (364 days), the benchmark** | 16.43 | 13.66 | 13.61 | 15.29 | 14.74 | 0% |
 | 364 days x growth | 17.66 | 13.70 | 13.57 | 15.27 | 15.05 | -1.9% |
-| **month-weekday profile** | 12.91 | 10.89 | 10.77 | 12.01 | **11.65** | **+21.0%** |
+| month-weekday profile (last year) | 12.91 | 10.89 | 10.77 | 12.01 | 11.65 | +21.0% |
 | month-weekday profile x growth | 13.66 | 10.72 | 10.57 | 11.81 | 11.69 | +20.9% |
+| **month-weekday profile, 2 years pooled** | 12.56 | 10.21 | 10.02 | 11.23 | **11.01** | **+25.4%** |
 | *estimated noise floor* | 11.43 | 9.50 | 9.38 | 10.52 | *10.21* | |
 
 ![WAPE by window](docs/images/baseline_wape_by_window.png)
 
-- **The month-weekday profile is the baseline to beat.** It forecasts each day as last year's average for the same
-  month and weekday. That one line of reasoning follows directly from the EDA (flat level inside a month), and it
-  cuts WAPE from 14.74% to 11.65%, a 21% improvement that is stable across windows (standard deviation 0.88). Its
-  sMAPE, the Kaggle metric, is 13.4.
+- **The two-year month-weekday profile is the baseline to beat.** Each day is forecast as the average for the same
+  month and weekday in each of the last two years, scaled by that year's growth, then averaged. It follows directly
+  from the EDA (flat level inside a month) and cuts WAPE from 14.74% to 11.01%, a 25% improvement, with a stable
+  spread across windows (standard deviation 1.01) and a Kaggle-metric sMAPE of 12.64.
+- **Pooling years matters.** The one-year version scores 11.65%. A single month-weekday average is only 4-5 days of
+  noisy data, so averaging a second year cuts about 5% more error.
 - **Why the 364-day benchmark loses:** it copies one day of last year, so it inherits that day's random noise on top
-  of the noise in the day being forecast. Averaging the 4-5 matching days removes most of the first part.
-- **Accuracy does not fade with the horizon:** the profile's WAPE is 11.8%, 11.6% and 11.7% for days 1-28, 29-60 and
-  61-90, so a 90-day forecast is as accurate as a 28-day one (the level is predictable; the error is daily noise).
-- **Growth scaling fixes bias but not accuracy.** Without it the profile under-forecasts by about 3.7% in every
-  window. With it the bias is about zero in three windows, but it overshoots by 4.9% in the Q1-2017 window, because
-  growth had slowed since the quarter used to measure it. WAPE is the same either way (11.65% vs 11.69%).
+  of the noise in the day being forecast.
+- **Accuracy does not fade with the horizon:** the two-year profile scores 11.1%, 11.0% and 11.1% for days 1-28,
+  29-60 and 61-90, so a 90-day forecast is as accurate as a 28-day one (the level is predictable; the error is
+  daily noise).
+- **Growth scaling fixes bias but not accuracy.** Without it the one-year profile under-forecasts by about 3.7% in
+  every window. With it the bias is near zero in three windows, but the Q1-2017 window overshoots (+3.2% to +4.9%)
+  because growth had slowed since the quarter used to measure it. WAPE is about the same either way.
 - **Little room is left:** the noise floor (the best any forecaster could do on this daily noise) is estimated at
-  10.2%, so at most about 12% more improvement over the best baseline is possible. The 10-20% target against the
-  benchmark corresponds to 13.1-14.8% WAPE in the Q1-2017 window; the profile already gets 12.9%.
-- **Method note:** the growth window (91 days) was picked after comparing 28, 91, 182 and 364 days on these windows
-  (mean WAPE within 0.2 points), so the growth baselines are very slightly tuned on the validation data.
+  10.2%, so at most about 7% more improvement over the best baseline is possible. The 10-20% target against the
+  benchmark corresponds to 13.1-14.8% WAPE in the Q1-2017 window; the two-year profile already gets 12.6%.
+- **Method notes:** the growth window (91 days) and the number of pooled years (2) were picked on these validation
+  windows (neighbouring settings differ by under 0.2 points on average), so those baselines are very slightly tuned
+  on the validation data. The noise floor is an estimate, not an exact bound.
+
+## Statistical models (Step 5)
+
+Holt-Winters, SARIMA and Prophet are fitted one series at a time, so they run on 10 series chosen at evenly spaced
+sales volumes (12.7 to 112.6 units a day), scored on the same four windows and compared with the baselines on those
+same series. No fit failed.
+
+| Model | Mean WAPE (10 series) | vs best one-year profile (11.47) |
+|---|---|---|
+| Holt-Winters (weekly) | 17.94 | -56.4% |
+| SARIMA(1,0,1)(1,1,1,7) | 16.70 | -45.6% |
+| SARIMAX + month dummies | 11.08 | +3.4% |
+| Prophet, default yearly seasonality | 11.06 | +3.5% |
+| **Prophet + month dummies** | **10.56** | **+7.9%** |
+| Prophet + month dummies + holidays | 10.59 | +7.6% |
+| *364-day benchmark (same series)* | 14.48 | |
+| *two-year month-weekday profile (same series)* | 10.74 | |
+| *estimated noise floor (same series)* | 10.07 | |
+
+![Statistical models by window](docs/images/statistical_wape_by_window.png)
+
+- **Weekly-only models fail.** Holt-Winters (17.9%) and SARIMA (16.7%) model the weekly cycle but cannot see the
+  month-by-month level steps, so they are worse than the plain 364-day benchmark (14.5%).
+- **Everything that can see the yearly pattern lands near 11%.** SARIMAX with month dummies (11.08%) and default
+  Prophet (11.06%) are close; Prophet with month dummies is best at 10.56%. I had expected default Prophet to
+  struggle with the staircase, and it did not: its flexible yearly seasonality approximates the steps well enough on
+  this data.
+- **Holidays add nothing** (10.59% with them versus 10.56% without), as the EDA predicted.
+- **Most of the gain is pooling years, not model sophistication.** The two-year profile, which is a few lines of
+  arithmetic, scores 10.74% on the same series: better than default Prophet and SARIMAX, and only 0.18 points behind
+  Prophet with month dummies. Prophet does win, but by under 2% relative, and the three Prophet fits take seconds
+  while SARIMAX takes a minute for no extra accuracy (fit time for 40 fits: Prophet 6.5-8.4 s, SARIMAX with months
+  60 s, Holt-Winters 3.8 s).
+- **Close to the floor:** the best model is within about 5% of the estimated noise floor (10.56% vs 10.07%), so there
+  is little left to gain from a better model of the same kind.
+- **Caution:** this is 10 series and 4 windows, so differences of a few tenths of a point between the top models
+  are within sampling noise.
+
+Next (Step 6): a single global LightGBM model trained on all 500 series, which can pool the seasonal shape across
+series as well as across years, judged against the two-year profile (11.01% on all series).
 
 ## Setup
 
@@ -108,11 +153,17 @@ pytest
 python -m forecast.prepare    # validate, clean and write data/processed/sales_prepared.parquet
 python -m forecast.eda        # figures in reports/figures and reports/eda_summary.json
 python -m forecast.run_baselines   # backtest all baselines: reports/baseline_results.csv and summary
+python -m forecast.run_statistical --n-series 5   # Step 5: statistical models on a sample of series
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
 days, memory before and after downcasting, validation windows). Flags: `--raw-dir`, `--processed-dir`,
 `--reports-dir`, `--log-level DEBUG`.
+
+`python -m forecast.run_statistical` fits Holt-Winters, SARIMA and Prophet one series at a time, so it runs on a
+sample of series (`--n-series`, default 10) chosen at evenly spaced sales volumes and compares them with the
+baselines on the same series. The Prophet models need `pip install -r requirements-prophet.txt`; without Prophet
+they are skipped. Use `--models` to run a subset.
 
 `python -m forecast.eda` reads the prepared parquet and writes the figures and `reports/eda_summary.json`. Flags:
 `--prepared-path`, `--reports-dir`, `--log-level` and `--skip-statsmodels` (skips the MSTL decomposition and the
@@ -126,7 +177,9 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               splits.py (time-based validation windows), prepare.py (Step 2 pipeline),
               holidays.py (holiday calendar), timeseries.py (ACF/PACF, MSTL, ADF/KPSS),
               eda.py (Step 3 pipeline), wide.py (series x day matrices), baselines.py (8 baselines),
-              backtest.py (scoring, noise floor), run_baselines.py (Step 4 pipeline), logging_utils.py
+              backtest.py (scoring, noise floor), run_baselines.py (Step 4 pipeline),
+              statistical.py (Holt-Winters, SARIMA(X), Prophet wrappers), run_statistical.py (Step 5
+              pipeline), logging_utils.py
 tests/        pytest suite
 docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)

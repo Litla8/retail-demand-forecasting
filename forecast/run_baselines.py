@@ -104,10 +104,10 @@ def run_baselines(cfg: ForecastConfig, df: Optional[pd.DataFrame] = None) -> Dic
     figures, dpi = cfg.paths.figures_dir, cfg.eda.figure_dpi
     plot_wape_by_window(scores, floor, cfg.benchmark, figures / "baseline_wape_by_window.png", dpi)
     plot_wape_by_horizon(scores, figures / "baseline_wape_by_horizon.png", dpi)
-    shown = {name: forecasters[name] for name in dict.fromkeys([cfg.benchmark, summary["best_baseline"]])}
+    shown = {name: forecasters[name] for name in dict.fromkeys([cfg.benchmark, summary["best_model"]])}
     plot_total_forecast(wide, windows[0], shown, figures / "baseline_total_forecast.png", dpi)
-    logger.info("Best baseline %s (mean WAPE %.2f%%); estimated noise floor %.2f%%", summary["best_baseline"],
-                summary["baselines"][summary["best_baseline"]]["mean_wape"], summary["noise_floor"]["mean"])
+    logger.info("Best baseline %s (mean WAPE %.2f%%); estimated noise floor %.2f%%", summary["best_model"],
+                summary["baselines"][summary["best_model"]]["mean_wape"], summary["noise_floor"]["mean"])
     return summary
 
 

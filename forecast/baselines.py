@@ -18,7 +18,7 @@ YEAR_LAG = 364  # 52 whole weeks: the same weekday one year earlier
 Forecaster = Callable[[np.ndarray, pd.DatetimeIndex, pd.DatetimeIndex], np.ndarray]
 
 
-def _check(history: np.ndarray, history_dates: pd.DatetimeIndex, future_dates: pd.DatetimeIndex) -> None:
+def check_inputs(history: np.ndarray, history_dates: pd.DatetimeIndex, future_dates: pd.DatetimeIndex) -> None:
     """Validate shapes, finiteness and that the future starts the day after the history ends.
 
     Raises:
@@ -48,14 +48,14 @@ def _same_weekday_positions(n_hist: int, horizon: int, weeks_back: int = 0) -> n
 
 def naive(history: np.ndarray, history_dates: pd.DatetimeIndex, future_dates: pd.DatetimeIndex) -> np.ndarray:
     """Repeat the last observed day for the whole horizon."""
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     return np.repeat(history[:, -1:], len(future_dates), axis=1)
 
 
 def moving_average(history: np.ndarray, history_dates: pd.DatetimeIndex,
                    future_dates: pd.DatetimeIndex, window: int) -> np.ndarray:
     """Repeat the mean of the last ``window`` days (a flat forecast, ignoring the weekday)."""
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     if window > history.shape[1]:
         raise ValueError("moving-average window is longer than the history")
     return np.repeat(history[:, -window:].mean(axis=1, keepdims=True), len(future_dates), axis=1)
@@ -64,7 +64,7 @@ def moving_average(history: np.ndarray, history_dates: pd.DatetimeIndex,
 def seasonal_naive_7(history: np.ndarray, history_dates: pd.DatetimeIndex,
                      future_dates: pd.DatetimeIndex) -> np.ndarray:
     """Repeat the last observed week: each future day copies the latest same weekday."""
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     if history.shape[1] < 7:
         raise ValueError("need at least 7 days of history")
     return history[:, _same_weekday_positions(history.shape[1], len(future_dates))]
@@ -73,7 +73,7 @@ def seasonal_naive_7(history: np.ndarray, history_dates: pd.DatetimeIndex,
 def seasonal_moving_average(history: np.ndarray, history_dates: pd.DatetimeIndex,
                             future_dates: pd.DatetimeIndex, weeks: int) -> np.ndarray:
     """Average the latest ``weeks`` same-weekday values; this smooths the one-day noise."""
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     if history.shape[1] < 7 * weeks:
         raise ValueError("history is shorter than the requested number of weeks")
     stacked = [history[:, _same_weekday_positions(history.shape[1], len(future_dates), w)] for w in range(weeks)]
@@ -91,22 +91,24 @@ def _lag_364_positions(n_hist: int, horizon: int) -> np.ndarray:
 def seasonal_naive_364(history: np.ndarray, history_dates: pd.DatetimeIndex,
                        future_dates: pd.DatetimeIndex) -> np.ndarray:
     """Same weekday one year earlier. This is the project's benchmark."""
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     return history[:, _lag_364_positions(history.shape[1], len(future_dates))]
 
 
-def growth_ratio(history: np.ndarray, window: int) -> np.ndarray:
-    """Per-series year-over-year growth factor: last ``window`` days / the same days 364 days earlier.
+def growth_ratio(history: np.ndarray, window: int, years_back: int = 1) -> np.ndarray:
+    """Per-series growth factor: the last ``window`` days / the same days ``years_back`` x 364 days earlier.
 
     Raises:
-        ValueError: If the history is shorter than ``window + 364`` days.
+        ValueError: If the history is too short for the requested comparison.
     """
     n = history.shape[1]
-    if n < window + YEAR_LAG:
-        raise ValueError(f"need at least {window + YEAR_LAG} days of history for a {window}-day growth ratio")
+    lag = YEAR_LAG * years_back
+    if n < window + lag:
+        raise ValueError(f"need at least {window + lag} days of history for a {window}-day growth ratio "
+                         f"{years_back} year(s) back")
     recent = history[:, n - window:].sum(axis=1)
-    year_ago = history[:, n - window - YEAR_LAG: n - YEAR_LAG].sum(axis=1)
-    return np.divide(recent, year_ago, out=np.ones_like(recent), where=year_ago > 0)
+    earlier = history[:, n - window - lag: n - lag].sum(axis=1)
+    return np.divide(recent, earlier, out=np.ones_like(recent), where=earlier > 0)
 
 
 def seasonal_naive_364_growth(history: np.ndarray, history_dates: pd.DatetimeIndex,
@@ -126,7 +128,7 @@ def month_weekday_profile(history: np.ndarray, history_dates: pd.DatetimeIndex,
     Raises:
         ValueError: If a forecast day has no matching day last year in the history.
     """
-    _check(history, history_dates, future_dates)
+    check_inputs(history, history_dates, future_dates)
     same_cell = (
         (history_dates.year.to_numpy()[None, :] == future_dates.year.to_numpy()[:, None] - 1)
         & (history_dates.month.to_numpy()[None, :] == future_dates.month.to_numpy()[:, None])
@@ -144,6 +146,33 @@ def month_weekday_profile_growth(history: np.ndarray, history_dates: pd.Datetime
     return month_weekday_profile(history, history_dates, future_dates) * growth_ratio(history, window)[:, None]
 
 
+def month_weekday_profile_multi_year(history: np.ndarray, history_dates: pd.DatetimeIndex,
+                                     future_dates: pd.DatetimeIndex, years: int, window: int) -> np.ndarray:
+    """Average of ``years`` one-year-style forecasts, each from a different past year.
+
+    For k = 1..years the same month-and-weekday average from k years back is scaled by the growth
+    measured against k years back, and the results are averaged. Pooling several years cuts the
+    noise in each year's 4-5 day average, which is why it beats the single-year profile.
+
+    Raises:
+        ValueError: If the history is too short or a forecast day has no matching day in a past year.
+    """
+    check_inputs(history, history_dates, future_dates)
+    forecasts = []
+    for k in range(1, years + 1):
+        same_cell = (
+            (history_dates.year.to_numpy()[None, :] == future_dates.year.to_numpy()[:, None] - k)
+            & (history_dates.month.to_numpy()[None, :] == future_dates.month.to_numpy()[:, None])
+            & (history_dates.dayofweek.to_numpy()[None, :] == future_dates.dayofweek.to_numpy()[:, None])
+        ).astype(float)
+        counts = same_cell.sum(axis=1, keepdims=True)
+        if (counts == 0).any():
+            raise ValueError(f"some forecast days have no matching month and weekday {k} year(s) back")
+        cell_mean = history @ (same_cell / counts).T  # [n_series, horizon]
+        forecasts.append(cell_mean * growth_ratio(history, window, years_back=k)[:, None])
+    return np.mean(forecasts, axis=0)
+
+
 def build_baselines(cfg: BaselineConfig) -> Dict[str, Forecaster]:
     """Instantiate the configured baselines with their parameters bound."""
     available: Dict[str, Forecaster] = {
@@ -155,5 +184,7 @@ def build_baselines(cfg: BaselineConfig) -> Dict[str, Forecaster]:
         "seasonal_naive_364_growth": partial(seasonal_naive_364_growth, window=cfg.growth_window),
         "month_weekday_profile": month_weekday_profile,
         "month_weekday_profile_growth": partial(month_weekday_profile_growth, window=cfg.growth_window),
+        "month_weekday_profile_multi_year": partial(month_weekday_profile_multi_year, years=cfg.profile_years,
+                                                    window=cfg.growth_window),
     }
     return {name: available[name] for name in cfg.names}

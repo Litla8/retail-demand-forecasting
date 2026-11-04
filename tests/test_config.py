@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from forecast.config import BASELINE_NAMES, BaselineConfig, EdaConfig, ForecastConfig, PathsConfig
+from forecast.config import (
+    BASELINE_NAMES,
+    STATISTICAL_MODEL_NAMES,
+    BaselineConfig,
+    EdaConfig,
+    ForecastConfig,
+    PathsConfig,
+    StatisticalConfig,
+)
 
 
 def test_defaults_match_the_project_brief() -> None:
@@ -26,12 +34,22 @@ def test_derived_paths() -> None:
     assert paths.eda_summary == Path("reports/eda_summary.json")
     assert paths.baseline_results == Path("reports/baseline_results.csv")
     assert paths.baseline_summary == Path("reports/baseline_summary.json")
+    assert paths.statistical_results == Path("reports/statistical_results.csv")
+    assert paths.statistical_summary == Path("reports/statistical_summary.json")
+
+
+def test_statistical_defaults() -> None:
+    stat = StatisticalConfig()
+    assert stat.models == STATISTICAL_MODEL_NAMES and stat.n_series == 10
+    assert stat.sarima_seasonal_order == (1, 1, 1, 7)  # weekly seasonal difference from the Step 3 tests
+    assert ForecastConfig().statistical == stat
 
 
 def test_baseline_defaults() -> None:
     baselines = BaselineConfig()
     assert baselines.names == BASELINE_NAMES and "seasonal_naive_364" in baselines.names
-    assert baselines.growth_window == 91 and ForecastConfig().benchmark in baselines.names
+    assert baselines.growth_window == 91 and baselines.profile_years == 2
+    assert ForecastConfig().benchmark in baselines.names and 'month_weekday_profile_multi_year' in baselines.names
 
 
 def test_eda_defaults_and_validation() -> None:

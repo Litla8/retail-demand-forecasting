@@ -60,7 +60,8 @@ def test_backtest_and_summary_on_synthetic_data(raw_frames: RawFrames, cfg: Fore
     summary = summarize_backtest(scores, cfg, floors)
     bench = summary["baselines"][cfg.benchmark]
     assert bench["mean_improvement_vs_benchmark_pct"] == pytest.approx(0.0)  # the benchmark vs itself
-    assert summary["best_baseline"] in forecasters and summary["noise_floor"]["mean"] == 10.0
+    assert summary["best_model"] in forecasters and summary["noise_floor"]["mean"] == 10.0
+    assert summary["headroom"]["best_model_mean_wape"] == summary["baselines"][summary["best_model"]]["mean_wape"]
     needed = summary["target"]["wape_needed_by_window"][windows[0].valid_end.date().isoformat()]
     assert needed["for_high"] < needed["for_low"]
 
