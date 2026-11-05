@@ -65,6 +65,16 @@ class PathsConfig:
         """JSON summary of the Step 5 statistical-model backtest."""
         return self.reports_dir / "statistical_summary.json"
 
+    @property
+    def gbm_results(self) -> Path:
+        """CSV with every gradient-boosting x window x horizon-bucket score (Step 6)."""
+        return self.reports_dir / "gbm_results.csv"
+
+    @property
+    def gbm_summary(self) -> Path:
+        """JSON summary of the Step 6 gradient-boosting backtest."""
+        return self.reports_dir / "gbm_summary.json"
+
 
 @dataclass(frozen=True)
 class EdaConfig:
@@ -204,6 +214,57 @@ class StatisticalConfig:
             raise ValueError("the seasonal period must be 7 and sarima_maxiter positive")
 
 
+GBM_ENGINES: Tuple[str, ...] = ("lightgbm", "hist_gb")
+
+
+@dataclass(frozen=True)
+class GbmConfig:
+    """Settings for the Step 6 global gradient-boosting model.
+
+    One row is one (series, forecast origin, target day). Features use only data up to the origin
+    and the target is the day's sales divided by the series' trailing-year average, so all 500
+    series share one scale.
+
+    Attributes:
+        engine: "lightgbm" or "hist_gb" (scikit-learn's histogram boosting, same algorithm family).
+        level_window: Days in the trailing average used as the series scale (364 = 52 whole weeks).
+        trend_windows: Recent windows (days) whose growth versus a year earlier is a feature.
+        profile_years: Past years whose same-month and same-weekday averages are features.
+        min_origin: Earliest origin index allowed (needs 364 + the longest trend window of history).
+        use_series_ids: Add store and item as features (the EDA found one shared shape, so off).
+        n_estimators, learning_rate, num_leaves, min_child_samples, subsample, colsample, reg_lambda:
+            Boosting hyperparameters (Step 7 tunes them).
+    """
+
+    engine: str = "lightgbm"
+    level_window: int = 364
+    trend_windows: Tuple[int, ...] = (28, 91)
+    profile_years: int = 2
+    min_origin: int = 454
+    use_series_ids: bool = False
+    n_estimators: int = 300
+    learning_rate: float = 0.05
+    num_leaves: int = 31
+    min_child_samples: int = 100
+    subsample: float = 0.8
+    colsample: float = 0.8
+    reg_lambda: float = 1.0
+    n_jobs: int = -1
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.engine not in GBM_ENGINES:
+            raise ValueError(f"engine must be one of {GBM_ENGINES}")
+        if self.level_window < 7 or min(self.trend_windows) < 1 or self.profile_years < 1:
+            raise ValueError("level_window must be at least 7 and the other windows/years positive")
+        if self.min_origin < self.level_window + max(self.trend_windows) - 1:
+            raise ValueError("min_origin must be at least level_window + max(trend_windows) - 1")
+        if self.n_estimators < 1 or not 0 < self.learning_rate <= 1 or self.num_leaves < 2:
+            raise ValueError("invalid boosting hyperparameters")
+        if not 0 < self.subsample <= 1 or not 0 < self.colsample <= 1:
+            raise ValueError("subsample and colsample must be in (0, 1]")
+
+
 @dataclass(frozen=True)
 class ForecastConfig:
     """Business, evaluation and data-preparation settings.
@@ -248,6 +309,7 @@ class ForecastConfig:
     eda: EdaConfig = field(default_factory=EdaConfig)
     baselines: BaselineConfig = field(default_factory=BaselineConfig)
     statistical: StatisticalConfig = field(default_factory=StatisticalConfig)
+    gbm: GbmConfig = field(default_factory=GbmConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""

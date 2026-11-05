@@ -11,7 +11,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 3: Time series EDA (trend, seasonality, holidays, intermittency, ACF/PACF, STL, stationarity)
 - [x] Step 4: Baseline models (9 baselines on 4 validation windows, noise-floor estimate)
 - [x] Step 5: Statistical models (Holt-Winters, SARIMA(X) and Prophet on a 10-series sample)
-- [ ] Step 6: Machine learning (LightGBM)
+- [x] Step 6: Machine learning (global LightGBM on all 500 series)
 - [ ] Step 7: Tuning and ensembling
 - [ ] Step 8: Business application
 - [ ] Step 9: Dashboard and deployment
@@ -138,8 +138,57 @@ same series. No fit failed.
 - **Caution:** this is 10 series and 4 windows, so differences of a few tenths of a point between the top models
   are within sampling noise.
 
-Next (Step 6): a single global LightGBM model trained on all 500 series, which can pool the seasonal shape across
-series as well as across years, judged against the two-year profile (11.01% on all series).
+Step 6 tests the pooling idea properly with one global model trained on all 500 series, judged against the
+two-year profile (11.01% on all series).
+
+## Gradient-boosting model (Step 6): design
+
+One global model is trained on all 500 series. The EDA showed that every series shares the same monthly and weekly
+shape, so a single model can pool that shape across series and across years instead of estimating it separately
+for each series from a few noisy days.
+
+- **Rows:** one row per series and target day, with a forecast origin 1 to 90 days earlier (chosen at random,
+  seeded). This mimics forecasting up to 90 days ahead and trains on roughly 480,000 to 650,000 rows per window.
+- **Target:** the day's sales divided by the series' trailing 364-day average, so small and large series share one
+  scale; rows are weighted by that average so large series count in proportion to their volume, as in WAPE.
+- **Features** (all computed from data up to the origin): the log scale; recent averages and year-over-year growth
+  over 28, 91 and 364 days; the sales 364 days before the target; the same-month and same-weekday average and the
+  same-month average from each of the last two years; month, weekday, day of month and the forecast horizon.
+  There are no holiday, price or promotion features: the data has no price or promotion columns and the EDA found no
+  holiday effect.
+- **No leakage by construction:** the model is refitted from scratch for every validation window using only the
+  history before it, and a test checks that every feature is identical when all data after a row's origin is deleted.
+- **Engine:** LightGBM (`--engine lightgbm`, the default). `--engine hist_gb` uses scikit-learn's histogram boosting,
+  which needs no extra install and is the same algorithm family.
+
+### Gradient-boosting results (Step 6)
+
+All 500 series, four validation windows, WAPE in percent.
+
+| Model | 2017-03-31 | 2017-06-30 | 2017-09-30 | 2017-12-31 | Mean |
+|---|---|---|---|---|---|
+| 364-day benchmark | 16.43 | 13.66 | 13.61 | 15.29 | 14.74 |
+| two-year month-weekday profile (best baseline) | 12.56 | 10.21 | 10.02 | 11.23 | 11.01 |
+| **global LightGBM** | **11.71** | **9.78** | **9.60** | **10.73** | **10.46** |
+
+![Gradient boosting by window](docs/images/gbm_wape_by_window.png)
+
+- **It beats the best baseline in every window** (5.0% lower WAPE on average) and the benchmark by 29.1%. The Kaggle
+  metric sMAPE is 12.01 and the spread across windows is the smallest so far (standard deviation 0.84).
+- **Horizon does not matter:** WAPE is 10.58%, 10.38% and 10.58% for days 1-28, 29-60 and 61-90.
+- **It sits close to the noise floor** (estimated 10.2% on these series), so at most about 2% more improvement is
+  left. The floor is an estimate, not an exact bound.
+- **A consistent over-forecast of about 2%** (bias +2.7%, +2.2%, +1.9%, +1.9% by window). The growth features carry
+  almost no weight, so the model cannot correct this itself; a calibration step is tested in Step 7.
+- **It fits in seconds:** all four LightGBM fits took 5.7 s in total.
+
+![Feature importance](docs/images/gbm_feature_importance.png)
+
+Gain share by feature: the same month-and-weekday average from last year 55.5%, the sales 364 days earlier 13.6%,
+the same average from two years back 11.5%, day of week 7.0%, same-month averages 6.6% and 3.8%, month 1.7%.
+Everything else (growth, recent averages, series scale, horizon, day of month) adds up to about 0.5%. The model
+has learned the structure found in the EDA: a shared, stable seasonal shape (series size and horizon do not matter,
+the level is flat within a month) and almost nothing else is needed.
 
 ## Setup
 
@@ -154,6 +203,7 @@ python -m forecast.prepare    # validate, clean and write data/processed/sales_p
 python -m forecast.eda        # figures in reports/figures and reports/eda_summary.json
 python -m forecast.run_baselines   # backtest all baselines: reports/baseline_results.csv and summary
 python -m forecast.run_statistical --n-series 5   # Step 5: statistical models on a sample of series
+python -m forecast.run_gbm    # Step 6: global LightGBM on all 500 series vs every baseline
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
@@ -179,7 +229,8 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               eda.py (Step 3 pipeline), wide.py (series x day matrices), baselines.py (8 baselines),
               backtest.py (scoring, noise floor), run_baselines.py (Step 4 pipeline),
               statistical.py (Holt-Winters, SARIMA(X), Prophet wrappers), run_statistical.py (Step 5
-              pipeline), logging_utils.py
+              pipeline), gbm_features.py (leakage-safe features), gbm.py (global boosting model),
+              run_gbm.py (Step 6 pipeline), logging_utils.py
 tests/        pytest suite
 docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)

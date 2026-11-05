@@ -9,9 +9,11 @@ import pytest
 from forecast.config import (
     BASELINE_NAMES,
     STATISTICAL_MODEL_NAMES,
+    GBM_ENGINES,
     BaselineConfig,
     EdaConfig,
     ForecastConfig,
+    GbmConfig,
     PathsConfig,
     StatisticalConfig,
 )
@@ -36,6 +38,15 @@ def test_derived_paths() -> None:
     assert paths.baseline_summary == Path("reports/baseline_summary.json")
     assert paths.statistical_results == Path("reports/statistical_results.csv")
     assert paths.statistical_summary == Path("reports/statistical_summary.json")
+    assert paths.gbm_results == Path("reports/gbm_results.csv")
+    assert paths.gbm_summary == Path("reports/gbm_summary.json")
+
+
+def test_gbm_defaults() -> None:
+    gbm = GbmConfig()
+    assert gbm.engine == "lightgbm" and gbm.engine in GBM_ENGINES and gbm.profile_years == 2
+    assert gbm.min_origin >= gbm.level_window + max(gbm.trend_windows) - 1 and not gbm.use_series_ids
+    assert ForecastConfig().gbm == gbm
 
 
 def test_statistical_defaults() -> None:

@@ -46,7 +46,7 @@ def plot_wape_by_window(scores: pd.DataFrame, floor_by_window: Dict[str, float],
                   linewidth=2.5, label="estimated noise floor" if i == 0 else None)
     ax.set_xticks(centre, table.index)
     ax.set_ylabel("WAPE (%)")
-    ax.set_title("Baseline accuracy by validation window (lower is better; benchmark outlined)")
+    ax.set_title("Accuracy by validation window (lower is better; benchmark outlined)")
     ax.legend(fontsize=8, ncol=3)
     fig.tight_layout()
     fig.savefig(path, dpi=dpi)
