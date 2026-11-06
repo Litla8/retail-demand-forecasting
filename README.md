@@ -12,7 +12,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 4: Baseline models (9 baselines on 4 validation windows, noise-floor estimate)
 - [x] Step 5: Statistical models (Holt-Winters, SARIMA(X) and Prophet on a 10-series sample)
 - [x] Step 6: Machine learning (global LightGBM on all 500 series)
-- [ ] Step 7: Tuning and ensembling
+- [x] Step 7: Tuning, calibration and error analysis (final model selected)
 - [ ] Step 8: Business application
 - [ ] Step 9: Dashboard and deployment
 
@@ -190,6 +190,73 @@ Everything else (growth, recent averages, series scale, horizon, day of month) a
 has learned the structure found in the EDA: a shared, stable seasonal shape (series size and horizon do not matter,
 the level is flat within a month) and almost nothing else is needed.
 
+### Tuning, calibration and error analysis (Step 7): design
+
+- **Tuning without peeking:** Optuna (TPE sampler, 30 trials) searches the boosting hyperparameters using two
+  90-day windows that end on 2016-09-30 and 2016-12-31, before the first validation window starts. The pipeline
+  refuses to run if a tuning window reaches into validation data. The default configuration is always trial 0, so the
+  search can only match or improve on it.
+- **Bias calibration and blending:** for each validation window the model is also fitted on the history without its
+  last 90 days and scored on those days. That pseudo-forecast sets (a) one multiplicative correction factor, limited
+  to 0.9-1.1, and (b) the weight of a blend with the two-year profile baseline. Neither uses the days being forecast.
+- **Parsimony rule:** five variants are compared (default, tuned, tuned + calibrated, tuned + blend, tuned +
+  calibrated + blend). A more complex variant is selected only if it beats the simpler one by at least 0.05 WAPE
+  points; the choice is saved to `models/gbm_params.json` for the later steps.
+- **Error analysis:** WAPE and bias by series, store, item, days ahead, weekday, month and week of the month, and
+  the share of series where the model beats the baseline.
+
+### Tuning, calibration and error analysis (Step 7): results
+
+All 500 series, four validation windows, mean WAPE in percent. "Points" are WAPE points gained over the default
+LightGBM from Step 6.
+
+| Variant | Mean WAPE | Gain (points) |
+|---|---|---|
+| default LightGBM (Step 6) | 10.455 | 0 |
+| tuned (30 Optuna trials) | 10.438 | 0.017 |
+| **tuned + bias calibration (selected)** | **10.355** | **0.100** |
+| tuned + blend with the two-year profile | 10.430 | 0.025 |
+| tuned + calibration + blend | 10.355 | 0.100 |
+
+The selected model is **5.9% better than the best baseline** (11.01%) and **29.7% better than the 364-day
+benchmark** (14.74%), and about 1.4% above the estimated noise floor (10.21%).
+
+![Hyperparameter search](docs/images/tuning_trials.png)
+
+- **Tuning did almost nothing.** Over 30 trials the best score on the tuning windows was 10.213% against 10.221% for
+  the default, and the gain on the validation windows was 0.017 points. The search settled on a smaller, more
+  regularised model (14 leaves, 260 samples per leaf, learning rate 0.107, 431 trees), but the default was already on
+  a plateau: the model is limited by noise, not by its settings.
+- **Calibration is the only step that helped** (0.083 points beyond tuning). The correction factors, decided only on
+  the 90 days before each window, were 1.006, 0.974, 0.983 and 0.982, which removes most of the 2% over-forecast.
+- **Blending added nothing.** After calibration the best blend weight was 1.0 (all boosting model) in every window.
+  The parsimony rule (a variant must gain at least 0.05 points) therefore selects the tuned and calibrated model.
+- **A remaining bias in the first quarter:** over-forecasting is still about +3% in January-March (and close to zero
+  from April to December). Growth slowed in 2017 (3.6% against 8.6% in 2016), so profiles built from earlier years
+  run slightly high in that window.
+
+#### Where the model is weak
+
+![Error by volume](docs/images/error_volume_scatter.png)
+
+- **Error is almost entirely a matter of series size.** The rank correlation between a series' sales volume and its
+  WAPE is -0.985. The worst series are the smallest (store 7 item 5, 14 units a day, 22.0% WAPE), the best are the
+  largest (store 2 item 15, 126 units a day, 6.9%). For a count with mean m, pure random (Poisson) noise alone gives
+  a WAPE of roughly 80 / sqrt(m) percent, which is 21% for the smallest series and 7.1% for the largest. The model
+  is within about a point of that, so this is irreducible noise, not a modelling weakness.
+- **Every one of the 500 series beats the baseline** (share of series better than the two-year profile: 100%).
+- **Stores:** WAPE runs from 9.1% (store 2) to 12.2% (store 7), following store size; bias is small (+0.4% to +0.6%)
+  in every store. The five worst items (5, 4, 41, 27, 47) are all low-volume items (16.0% to 17.4%).
+- **No horizon decay:** day 1 scores 10.4% and day 90 scores 10.0%.
+- **Weekday and month follow volume too:** Monday (the quietest day) is the worst at 11.5% and Sunday the best at
+  9.4%; January (12.6%), February and December are the weakest months and July (9.0%) the best.
+- **No month-boundary problem:** WAPE is 10.2-10.3% in every week of the month, so the model handles the monthly
+  level steps found in the EDA.
+
+![Error by horizon, weekday and month](docs/images/error_horizon_calendar.png)
+
+The selected configuration is saved to `models/gbm_params.json` for the business application in Step 8.
+
 ## Setup
 
 Download `train.csv`, `test.csv` and `sample_submission.csv` from the Kaggle competition into `data/raw/`.
@@ -204,6 +271,7 @@ python -m forecast.eda        # figures in reports/figures and reports/eda_summa
 python -m forecast.run_baselines   # backtest all baselines: reports/baseline_results.csv and summary
 python -m forecast.run_statistical --n-series 5   # Step 5: statistical models on a sample of series
 python -m forecast.run_gbm    # Step 6: global LightGBM on all 500 series vs every baseline
+python -m forecast.run_tuning # Step 7: tuning, bias calibration, blending and error analysis
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
@@ -230,7 +298,9 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               backtest.py (scoring, noise floor), run_baselines.py (Step 4 pipeline),
               statistical.py (Holt-Winters, SARIMA(X), Prophet wrappers), run_statistical.py (Step 5
               pipeline), gbm_features.py (leakage-safe features), gbm.py (global boosting model),
-              run_gbm.py (Step 6 pipeline), logging_utils.py
+              run_gbm.py (Step 6 pipeline), tuning.py (Optuna search), ensemble.py (calibration and
+              blending), error_analysis.py (weak-area analysis), run_tuning.py (Step 7 pipeline),
+              logging_utils.py
 tests/        pytest suite
 docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)

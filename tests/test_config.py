@@ -16,6 +16,7 @@ from forecast.config import (
     GbmConfig,
     PathsConfig,
     StatisticalConfig,
+    TuneConfig,
 )
 
 
@@ -40,6 +41,15 @@ def test_derived_paths() -> None:
     assert paths.statistical_summary == Path("reports/statistical_summary.json")
     assert paths.gbm_results == Path("reports/gbm_results.csv")
     assert paths.gbm_summary == Path("reports/gbm_summary.json")
+    assert paths.tuning_trials == Path("reports/tuning_trials.csv")
+    assert paths.step7_summary == Path("reports/step7_summary.json")
+    assert paths.gbm_params == Path("models/gbm_params.json")
+
+
+def test_tune_defaults() -> None:
+    tune = TuneConfig()
+    assert tune.search == "optuna" and tune.n_trials == 30 and tune.tuning_window_ends == ("2016-09-30", "2016-12-31")
+    assert ForecastConfig().tune == tune
 
 
 def test_gbm_defaults() -> None:

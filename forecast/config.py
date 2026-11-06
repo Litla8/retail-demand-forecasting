@@ -75,6 +75,26 @@ class PathsConfig:
         """JSON summary of the Step 6 gradient-boosting backtest."""
         return self.reports_dir / "gbm_summary.json"
 
+    @property
+    def tuning_trials(self) -> Path:
+        """CSV with every hyperparameter trial of Step 7."""
+        return self.reports_dir / "tuning_trials.csv"
+
+    @property
+    def step7_results(self) -> Path:
+        """CSV with every Step 7 variant x window x horizon-bucket score."""
+        return self.reports_dir / "step7_results.csv"
+
+    @property
+    def step7_summary(self) -> Path:
+        """JSON summary of Step 7: tuning, stacking and error analysis."""
+        return self.reports_dir / "step7_summary.json"
+
+    @property
+    def gbm_params(self) -> Path:
+        """JSON with the selected model configuration, used by the later steps."""
+        return self.models_dir / "gbm_params.json"
+
 
 @dataclass(frozen=True)
 class EdaConfig:
@@ -265,6 +285,45 @@ class GbmConfig:
             raise ValueError("subsample and colsample must be in (0, 1]")
 
 
+TUNE_SEARCHES: Tuple[str, ...] = ("optuna", "random")
+
+
+@dataclass(frozen=True)
+class TuneConfig:
+    """Settings for Step 7 (tuning, bias calibration, blending).
+
+    Attributes:
+        n_trials: Hyperparameter trials, counting the default configuration as trial 0.
+        search: "optuna" (TPE sampler) or "random"; falls back to random if optuna is missing.
+        tuning_window_ends: Last day of each 90-day window used to score trials. They must end
+            before the first validation window starts, so tuning never sees validation data.
+        blend_step: Grid step for the weight of the boosting model in a blend (0.1 -> 0, 0.1, ..., 1).
+        calibration_clip: Allowed range of the multiplicative bias correction.
+        min_gain_points: A more complex variant must beat the simpler one by this many WAPE points.
+    """
+
+    n_trials: int = 30
+    search: str = "optuna"
+    tuning_window_ends: Tuple[str, ...] = ("2016-09-30", "2016-12-31")
+    blend_step: float = 0.1
+    calibration_clip: Tuple[float, float] = (0.9, 1.1)
+    min_gain_points: float = 0.05
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.search not in TUNE_SEARCHES:
+            raise ValueError(f"search must be one of {TUNE_SEARCHES}")
+        if self.n_trials < 1 or not self.tuning_window_ends:
+            raise ValueError("n_trials must be positive and tuning_window_ends non-empty")
+        if not 0 < self.blend_step <= 1:
+            raise ValueError("blend_step must be in (0, 1]")
+        low, high = self.calibration_clip
+        if not 0 < low < 1 < high:
+            raise ValueError("calibration_clip must satisfy 0 < low < 1 < high")
+        if self.min_gain_points < 0:
+            raise ValueError("min_gain_points must be non-negative")
+
+
 @dataclass(frozen=True)
 class ForecastConfig:
     """Business, evaluation and data-preparation settings.
@@ -310,6 +369,7 @@ class ForecastConfig:
     baselines: BaselineConfig = field(default_factory=BaselineConfig)
     statistical: StatisticalConfig = field(default_factory=StatisticalConfig)
     gbm: GbmConfig = field(default_factory=GbmConfig)
+    tune: TuneConfig = field(default_factory=TuneConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""
