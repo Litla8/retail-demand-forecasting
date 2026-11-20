@@ -13,7 +13,7 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 5: Statistical models (Holt-Winters, SARIMA(X) and Prophet on a 10-series sample)
 - [x] Step 6: Machine learning (global LightGBM on all 500 series)
 - [x] Step 7: Tuning, calibration and error analysis (final model selected)
-- [ ] Step 8: Business application
+- [x] Step 8: Business application (reorder plan, prediction intervals, inventory savings)
 - [ ] Step 9: Dashboard and deployment
 
 ## Key decisions (Step 1)
@@ -257,6 +257,64 @@ benchmark** (14.74%), and about 1.4% above the estimated noise floor (10.21%).
 
 The selected configuration is saved to `models/gbm_params.json` for the business application in Step 8.
 
+## Business application (Step 8): design
+
+The forecasts are turned into ordering decisions and compared on what they cost to run.
+
+- **Policy:** a periodic-review policy with lost sales. Every 7 days it orders enough to bring stock plus open orders
+  up to the forecast demand over the next 14 days (7 days lead time plus the 7-day review period) plus a safety
+  stock. Lead time, review period and the costs below are placeholders in `config.py`; replace them with the
+  retailer's real values.
+- **Safety stock from the forecast errors, not from an assumed distribution:** the errors of the 14-day demand
+  are divided by the square root of the forecast (the Step 7 finding that the error grows with the square root of
+  volume) and the safety stock is the empirical quantile of that ratio at the chosen service level.
+- **No peeking:** the quantiles for each validation window come only from earlier windows, so the first window is
+  used only for calibration and the simulation covers the second to fourth windows.
+- **Comparison:** the selected model, the two-year profile baseline and the 364-day benchmark run through the same
+  simulation at eight service levels. They are compared on (a) the inventory needed for the same fill rate and
+  (b) total cost at each one's best service level, using placeholder costs (holding 0.02 per unit and day,
+  a stock-out 3.0 per unit). The inventory comparison does not depend on the cost assumptions.
+- **Honesty check:** the coverage the safety stock actually achieved on later windows is reported next to its target.
+- **Outputs:** `reports/reorder_plan.csv` (weekly order-up-to levels for the test period),
+  `reports/forecast_intervals.csv` (daily forecasts with 80% and 95% intervals), `reports/submission.csv` (Kaggle
+  format) and `reports/business_summary.json`.
+
+### Business results (Step 8)
+
+All 500 series, simulated on the second to fourth validation windows (the first only calibrates the safety stock).
+Costs are placeholders (holding 0.02 per unit and day, stock-out 3.0 per unit); the inventory comparison does not
+depend on them. Inventory is the average number of units on hand per series and day.
+
+| Forecaster | Inventory at 99.5% fill rate | Best service level | Fill rate there | Average inventory | Total cost |
+|---|---|---|---|---|---|
+| 364-day benchmark | 277.3 | 95% | 99.77% | 292.8 | 6.297 |
+| two-year profile | 269.7 | 98% | 99.86% | 293.8 | 6.139 |
+| **selected model** | **261.1** | 98% | 99.85% | **280.1** | **5.879** |
+
+![Inventory against fill rate](docs/images/business_frontier.png)
+
+- **Less inventory for the same service:** at a 99.5% fill rate the selected model needs 5.8% less inventory than the
+  benchmark and 3.2% less than the two-year profile (about 8,100 and 4,300 fewer units on hand across the 500
+  series). Total cost at each forecaster's best service level is 6.6% and 4.2% lower. With the placeholder costs
+  that is roughly 18,800 and 11,700 cost units per quarter; replace the costs with real ones before quoting money.
+- **Fill rates are 99-99.9% at every service level.** Demand over a 14-day protection interval is very predictable,
+  so stock-outs are rare either way; a better forecast pays off as lower inventory, not as fewer stock-outs.
+- **The prediction intervals under-cover:** safety stocks calibrated on earlier windows achieved less than their
+  nominal level on later windows (nominal 95% achieved 87.8% for the model, 93.1% for the benchmark; nominal 98%
+  achieved 93.9% and 97.1%). The first window's +3% over-forecast made the model's upper quantiles too small for
+  later windows. Read a nominal 98% safety stock as roughly 94%, or order against a higher level. The savings
+  above are compared at the same realised fill rate, so they are not affected.
+
+![Intervals honesty check](docs/images/business_coverage.png)
+
+- **The plan for January-March 2018** uses the model's cost-optimal level (98%): 12 weekly orders per series, about
+  2.20 million units of forecast demand, and a first-order safety stock of about 24,800 units (1.1% of the quarter's
+  demand). The most heavily buffered series are the smallest ones (store 7 item 5 at 17.1%, then store 5 item 5,
+  store 6 item 5 and store 7 items 27, 41, 1, 4 and 47 at 15-17% of their 14-day forecast), as the volume-error
+  finding predicts.
+
+![Forecast with prediction intervals](docs/images/forecast_fan_chart.png)
+
 ## Setup
 
 Download `train.csv`, `test.csv` and `sample_submission.csv` from the Kaggle competition into `data/raw/`.
@@ -272,6 +330,7 @@ python -m forecast.run_baselines   # backtest all baselines: reports/baseline_re
 python -m forecast.run_statistical --n-series 5   # Step 5: statistical models on a sample of series
 python -m forecast.run_gbm    # Step 6: global LightGBM on all 500 series vs every baseline
 python -m forecast.run_tuning # Step 7: tuning, bias calibration, blending and error analysis
+python -m forecast.run_business   # Step 8: reorder plan, prediction intervals, inventory savings
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
@@ -300,7 +359,9 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               pipeline), gbm_features.py (leakage-safe features), gbm.py (global boosting model),
               run_gbm.py (Step 6 pipeline), tuning.py (Optuna search), ensemble.py (calibration and
               blending), error_analysis.py (weak-area analysis), run_tuning.py (Step 7 pipeline),
-              logging_utils.py
+              inventory.py (safety stock, inventory simulation), selected.py (rebuild the Step 7 choice),
+              business.py (savings, reorder plan, intervals, submission), run_business.py (Step 8
+              pipeline), logging_utils.py
 tests/        pytest suite
 docs/images/  figures used in this README
 data/raw/     Kaggle files (git-ignored)

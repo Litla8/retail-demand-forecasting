@@ -11,6 +11,7 @@ from forecast.config import (
     STATISTICAL_MODEL_NAMES,
     GBM_ENGINES,
     BaselineConfig,
+    BusinessConfig,
     EdaConfig,
     ForecastConfig,
     GbmConfig,
@@ -44,6 +45,21 @@ def test_derived_paths() -> None:
     assert paths.tuning_trials == Path("reports/tuning_trials.csv")
     assert paths.step7_summary == Path("reports/step7_summary.json")
     assert paths.gbm_params == Path("models/gbm_params.json")
+    assert paths.business_summary == Path("reports/business_summary.json")
+    assert paths.reorder_plan == Path("reports/reorder_plan.csv") and paths.submission == Path("reports/submission.csv")
+
+
+def test_business_defaults_and_validation() -> None:
+    biz = BusinessConfig()
+    assert biz.protection_days == 14 and biz.target_fill_rate == 0.995 and ForecastConfig().business == biz
+    with pytest.raises(ValueError, match="service_levels"):
+        BusinessConfig(service_levels=(0.9, 0.8))
+    with pytest.raises(ValueError, match="target_fill_rate"):
+        BusinessConfig(target_fill_rate=1.0)
+    with pytest.raises(ValueError, match="first_eval_window"):
+        BusinessConfig(first_eval_window=0)
+    with pytest.raises(ValueError, match="costs"):
+        BusinessConfig(stockout_cost_per_unit=-1.0)
 
 
 def test_tune_defaults() -> None:

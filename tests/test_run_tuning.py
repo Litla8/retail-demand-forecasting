@@ -57,3 +57,12 @@ def test_run_tuning_is_repeatable(raw_frames: RawFrames, tune_cfg: ForecastConfi
     first, second = run_tuning(tune_cfg, prepared), run_tuning(tune_cfg, prepared)
     assert first["variants_mean_wape"] == second["variants_mean_wape"]
     assert first["tuning"]["best_params"] == second["tuning"]["best_params"]
+
+
+def test_selecting_the_default_saves_the_default_settings(raw_frames: RawFrames, tune_cfg: ForecastConfig) -> None:
+    prepared = build_prepared_frame(raw_frames, tune_cfg)[0]
+    strict = replace(tune_cfg, tune=replace(tune_cfg.tune, min_gain_points=100.0))  # nothing can beat the default
+    summary = run_tuning(strict, prepared)
+    saved = json.loads(strict.paths.gbm_params.read_text())
+    assert summary["selected_variant"] == "gbm_default" and saved["variant"] == "gbm_default"
+    assert saved["gbm"]["num_leaves"] == strict.gbm.num_leaves and saved["calibrate"] is False

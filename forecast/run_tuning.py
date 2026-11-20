@@ -142,8 +142,9 @@ def run_tuning(cfg: ForecastConfig, df: Optional[pd.DataFrame] = None,
         "error_analysis": analysis["summary"],
         "series_used": int(wide.n_series),
     })
+    saved_gbm = cfg.gbm if selected == "gbm_default" else tuned_cfg  # the default model keeps its own settings
     selected_config = {
-        "variant": selected, "gbm": {**vars(tuned_cfg)}, "baseline": BEST_BASELINE,
+        "variant": selected, "gbm": {**vars(saved_gbm)}, "baseline": BEST_BASELINE,
         "calibrate": "calibrated" in selected, "blend": "blend" in selected,
         "tuning_search": tuned.search, "mean_wape": means[selected],
     }

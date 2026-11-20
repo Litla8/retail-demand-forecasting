@@ -3,4 +3,4 @@
 __all__ = ["config", "metrics", "data", "features", "splits", "prepare", "holidays", "timeseries",
            "eda", "wide", "baselines", "backtest", "run_baselines", "statistical", "run_statistical",
            "gbm_features", "gbm", "run_gbm", "tuning", "ensemble", "error_analysis", "run_tuning",
-           "logging_utils"]
+           "inventory", "selected", "business", "run_business", "logging_utils"]

@@ -95,6 +95,31 @@ class PathsConfig:
         """JSON with the selected model configuration, used by the later steps."""
         return self.models_dir / "gbm_params.json"
 
+    @property
+    def business_results(self) -> Path:
+        """CSV with the inventory simulation for every forecaster and service level (Step 8)."""
+        return self.reports_dir / "business_results.csv"
+
+    @property
+    def business_summary(self) -> Path:
+        """JSON summary of the Step 8 inventory analysis."""
+        return self.reports_dir / "business_summary.json"
+
+    @property
+    def reorder_plan(self) -> Path:
+        """Weekly reorder plan for the test period (Step 8)."""
+        return self.reports_dir / "reorder_plan.csv"
+
+    @property
+    def forecast_intervals(self) -> Path:
+        """Daily forecasts with prediction intervals for the test period (Step 8)."""
+        return self.reports_dir / "forecast_intervals.csv"
+
+    @property
+    def submission(self) -> Path:
+        """Kaggle-format submission (id, sales) for the test period."""
+        return self.reports_dir / "submission.csv"
+
 
 @dataclass(frozen=True)
 class EdaConfig:
@@ -325,6 +350,59 @@ class TuneConfig:
 
 
 @dataclass(frozen=True)
+class BusinessConfig:
+    """Settings and placeholder economics for the Step 8 inventory analysis.
+
+    The dataset has no prices or costs, so the cost figures are assumptions to be replaced with the
+    retailer's real numbers; the service-level versus inventory trade-off does not depend on them.
+
+    Attributes:
+        lead_time_days: Days between placing an order and receiving it.
+        review_days: Days between orders (a periodic-review policy).
+        service_levels: Quantile levels of demand over the protection interval tested for safety stock.
+        target_fill_rate: Fill rate at which forecasters are compared on the inventory they need; if it lies
+            outside the range every forecaster reaches, the middle of that common range is used instead.
+        holding_cost_per_unit_day: Cost of holding one unit in stock for one day.
+        stockout_cost_per_unit: Cost of one unit of unmet demand (lost margin).
+        first_eval_window: Index of the first validation window that is simulated; earlier windows
+            only provide the forecast errors used to size safety stock, so no window is calibrated on its own errors
+            or on later ones.
+        interval_levels: Central prediction-interval levels reported for the forecasts.
+    """
+
+    lead_time_days: int = 7
+    review_days: int = 7
+    service_levels: Tuple[float, ...] = (0.60, 0.70, 0.80, 0.85, 0.90, 0.95, 0.98, 0.99)
+    target_fill_rate: float = 0.995
+    holding_cost_per_unit_day: float = 0.02
+    stockout_cost_per_unit: float = 3.0
+    first_eval_window: int = 1
+    interval_levels: Tuple[float, ...] = (0.80, 0.95)
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.lead_time_days < 0 or self.review_days < 1:
+            raise ValueError("lead_time_days must be >= 0 and review_days >= 1")
+        if not self.service_levels or any(not 0.5 <= q < 1 for q in self.service_levels):
+            raise ValueError("service_levels must be non-empty and in [0.5, 1)")
+        if list(self.service_levels) != sorted(set(self.service_levels)):
+            raise ValueError("service_levels must be strictly increasing")
+        if not 0 < self.target_fill_rate < 1:
+            raise ValueError("target_fill_rate must be strictly between 0 and 1")
+        if self.holding_cost_per_unit_day < 0 or self.stockout_cost_per_unit < 0:
+            raise ValueError("costs must be non-negative")
+        if self.first_eval_window < 1:
+            raise ValueError("first_eval_window must be at least 1 (window 0 only calibrates)")
+        if any(not 0 < q < 1 for q in self.interval_levels):
+            raise ValueError("interval_levels must be strictly between 0 and 1")
+
+    @property
+    def protection_days(self) -> int:
+        """Days of demand an order must cover: lead time plus the review period."""
+        return self.lead_time_days + self.review_days
+
+
+@dataclass(frozen=True)
 class ForecastConfig:
     """Business, evaluation and data-preparation settings.
 
@@ -370,6 +448,7 @@ class ForecastConfig:
     statistical: StatisticalConfig = field(default_factory=StatisticalConfig)
     gbm: GbmConfig = field(default_factory=GbmConfig)
     tune: TuneConfig = field(default_factory=TuneConfig)
+    business: BusinessConfig = field(default_factory=BusinessConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""

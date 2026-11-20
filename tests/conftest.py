@@ -25,7 +25,8 @@ def cfg(tmp_path: Path) -> ForecastConfig:
         horizon_buckets=(7, 14, HORIZON),
         validation_window_ends=("2015-06-30", "2015-08-15", "2015-09-27"),
         min_history_days=364,
-        paths=replace(base.paths, processed_dir=tmp_path / "processed", reports_dir=tmp_path / "reports"),
+        paths=replace(base.paths, processed_dir=tmp_path / "processed", models_dir=tmp_path / "models",
+                     reports_dir=tmp_path / "reports"),  # every output folder must be temporary
     )
 
 
