@@ -31,6 +31,7 @@ from forecast.business import (  # noqa: E402
     reorder_plan,
 )
 from forecast.config import ForecastConfig  # noqa: E402
+from forecast.dashboard_data import save_backtest  # noqa: E402
 from forecast.data import load_prepared  # noqa: E402
 from forecast.inventory import quantile_table, standardized_errors  # noqa: E402
 from forecast.logging_utils import configure_logging  # noqa: E402
@@ -161,7 +162,8 @@ def run_business(cfg: ForecastConfig, df: Optional[pd.DataFrame] = None, model: 
     benchmark, baseline = cfg.benchmark, BEST_BASELINE
 
     # final forecast for the test period, trained on all labelled history
-    test_dates = pd.DatetimeIndex(sorted(frame.loc[frame["is_test"], "date"].unique()))
+    # the next horizon_days after the last labelled day, so the same code serves any later data refresh
+    test_dates = pd.date_range(wide.dates[-1] + pd.Timedelta(days=1), periods=cfg.horizon_days, freq="D")
     final = np.maximum(model(wide.values, wide.dates, test_dates), 0.0)
     level = float(optimal.loc[MODEL_NAME, "service_level"])
     review, protection = biz.review_days, biz.protection_days
@@ -171,8 +173,10 @@ def run_business(cfg: ForecastConfig, df: Optional[pd.DataFrame] = None, model: 
     intervals = interval_table(final, wide.series, test_dates, daily, biz.interval_levels)
     _rounded(plan).to_csv(cfg.paths.reorder_plan, index=False)
     _rounded(intervals).to_csv(cfg.paths.forecast_intervals, index=False)
-    if "id" in frame.columns and frame["is_test"].any():
+    frame_test_dates = pd.DatetimeIndex(sorted(frame.loc[frame["is_test"], "date"].unique()))
+    if "id" in frame.columns and frame_test_dates.equals(test_dates):  # only the Kaggle test period has ids to submit
         build_submission(frame, final, wide.series, test_dates).round(4).to_csv(cfg.paths.submission, index=False)
+    save_backtest(records, wide, windows, cfg.paths.backtest_forecasts)
 
     first_review = plan[plan["order_date"] == plan["order_date"].min()].assign(
         buffer_pct=lambda t: 100 * t["safety_stock"] / t["forecast_units"].clip(lower=1e-9))

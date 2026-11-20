@@ -14,7 +14,35 @@ inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasti
 - [x] Step 6: Machine learning (global LightGBM on all 500 series)
 - [x] Step 7: Tuning, calibration and error analysis (final model selected)
 - [x] Step 8: Business application (reorder plan, prediction intervals, inventory savings)
-- [ ] Step 9: Dashboard and deployment
+- [x] Step 9: Dashboard, monitoring and monthly refresh
+
+## Results at a glance
+
+All 500 series, four 90-day validation windows in 2017, WAPE in percent (lower is better).
+
+| Model | Mean WAPE | vs 364-day benchmark |
+|---|---|---|
+| 364-day seasonal naive (the benchmark) | 14.74 | 0% |
+| two-year month-weekday profile (best baseline) | 11.01 | 25.3% lower |
+| default LightGBM (one global model) | 10.46 | 29.1% lower |
+| **tuned and bias-calibrated LightGBM (final model)** | **10.36** | **29.7% lower** |
+| *estimated noise floor* | *10.2* | |
+
+In inventory terms the final model needs **5.8% less stock than the benchmark (3.2% less than the best baseline) for the
+same fill rate**, and 4.2-6.6% lower total cost at each forecaster's best service level under placeholder costs.
+
+What the project shows:
+
+1. **The EDA did most of the work.** Finding that the level is flat inside a month, steps about 11.6% at each month
+   boundary and shows no holiday effect led to a baseline with no machine learning (last two years' average for the same
+   month and weekday) that is already 25% better than the benchmark.
+2. **A global model adds about 6% more** by pooling the seasonal shape across all 500 series and several years.
+3. **The model is close to the limit of the data.** Tuning added 0.017 WAPE points, calibration 0.083, blending nothing, and
+   the remaining error follows series size almost exactly as random (Poisson) noise would (rank correlation -0.985).
+4. **Models that cannot see the monthly steps fail:** Holt-Winters and SARIMA scored 16.7-17.9% on a 10-series sample, worse
+   than the plain benchmark; Prophet with month terms matched the best baselines.
+5. **A better forecast pays off as lower inventory**, not fewer stock-outs: demand over a 14-day protection interval is
+   so predictable that fill rates are 99-99.9% at every service level.
 
 ## Key decisions (Step 1)
 
@@ -315,6 +343,24 @@ depend on them. Inventory is the average number of units on hand per series and 
 
 ![Forecast with prediction intervals](docs/images/forecast_fan_chart.png)
 
+## Dashboard and operations (Step 9)
+
+- **Dashboard** (`app/dashboard.py`, Streamlit): five tabs. *Overview* shows the model comparison and headline savings;
+  *Forecast explorer* shows any store-item series with its 80% and 95% intervals, its past accuracy against the
+  benchmark and its reorder plan; *Accuracy* breaks error down by store, weekday and store-item and plots actual versus
+  forecast in a validation window; *Inventory plan* lists the series needing the biggest safety buffer and offers
+  the reorder plan as a download; *Monitoring* shows the accuracy log of earlier forecasts.
+- **Compact data bundle:** the dashboard reads only `dashboard_data/` (about 5 MB, built by
+  `python -m forecast.dashboard_data`), so it can be deployed without the raw data or the models. All charts are plain
+  functions in `forecast/dashboard_data.py` and are unit-tested; the Streamlit file only wires them to widgets.
+- **Monthly refresh** (`scripts/monthly_refresh.ps1`): archives the current forecast, regenerates the horizon files,
+  re-prepares the data, retrains and re-plans, then checks every archived forecast against the actuals that have arrived
+  since (`python -m forecast.monitor`) and refreshes the dashboard bundle. Add `-Retune` once a quarter.
+- **Monitoring rules:** a forecast with at least 14 realised days raises an alert (exit code 2) when its WAPE is more than
+  20% above the 10.36% backtest figure or when its nominal 95% interval covers less than 80% of actuals.
+- **Scheduling and deployment:** Windows Task Scheduler and cron commands, the Streamlit Community Cloud steps and the
+  data-rules caveat are in [`docs/operations.md`](docs/operations.md).
+
 ## Setup
 
 Download `train.csv`, `test.csv` and `sample_submission.csv` from the Kaggle competition into `data/raw/`.
@@ -331,6 +377,9 @@ python -m forecast.run_statistical --n-series 5   # Step 5: statistical models o
 python -m forecast.run_gbm    # Step 6: global LightGBM on all 500 series vs every baseline
 python -m forecast.run_tuning # Step 7: tuning, bias calibration, blending and error analysis
 python -m forecast.run_business   # Step 8: reorder plan, prediction intervals, inventory savings
+python -m forecast.dashboard_data # Step 9: build the compact bundle read by the dashboard
+streamlit run app/dashboard.py    # dashboard at http://localhost:8501
+powershell -ExecutionPolicy Bypass -File scripts\monthly_refresh.ps1   # monthly refresh (docs/operations.md)
 ```
 
 `python -m forecast.prepare` also writes `reports/data_quality.json` (row counts, date ranges, zero/negative/missing
@@ -361,10 +410,31 @@ forecast/     config.py (all settings), metrics.py (WAPE, sMAPE, MAE, RMSE, bias
               blending), error_analysis.py (weak-area analysis), run_tuning.py (Step 7 pipeline),
               inventory.py (safety stock, inventory simulation), selected.py (rebuild the Step 7 choice),
               business.py (savings, reorder plan, intervals, submission), run_business.py (Step 8
-              pipeline), logging_utils.py
-tests/        pytest suite
-docs/images/  figures used in this README
+              pipeline), dashboard_data.py (bundle, dashboard charts), monitor.py (accuracy check of
+              earlier forecasts), horizon.py (test files for new data), logging_utils.py
+app/          dashboard.py (Streamlit), requirements.txt (lean, for deployment)
+scripts/      monthly_refresh.ps1
+tests/        pytest suite (about 150 tests, synthetic data only)
+docs/          operations.md (scheduling, deployment) and images/ (figures used in this README)
 data/raw/     Kaggle files (git-ignored)
 data/processed/  prepared parquet (git-ignored, recreated by forecast.prepare)
 reports/      generated figures and JSON summaries (git-ignored)
 ```
+
+## Limitations and honest notes
+
+- **The data looks synthetic.** A level that is flat inside each month with sharp month-boundary steps, no holiday effect and
+  near-Poisson noise is unusual in real retail data. The conclusions about the monthly staircase and the noise floor may not
+  transfer to a retailer with promotions, price changes and holidays.
+- **One test season.** The validation windows cover 2017 only and the final forecast is for January to March 2018, the seasonal
+  low. The model's remaining +3% over-forecast in that quarter (growth slowed in 2017) is a live risk.
+- **Costs and lead times are placeholders.** The inventory savings in percent of stock do not depend on them; the cost figures do.
+- **The prediction intervals run narrow:** a nominal 95% behaved like about 88-91% on later windows, so safety stocks are
+  somewhat lower than their nominal level suggests.
+- **Statistical models were tested on 10 series only** (they are slow), so differences of a few tenths of a point between them
+  are within sampling noise.
+- **The noise floor is an estimate**, not an exact bound.
+- **Monitoring is untested on real new data:** the Kaggle history ends on 2017-12-31 and the test period has no actuals, so the
+  monitor is covered by unit tests on synthetic data and starts working with the first refresh that brings new rows.
+- **Dashboard deployment** needs the data bundle in the repository, which includes 400 days of the Kaggle sales; check the
+  competition's data rules before making anything public.

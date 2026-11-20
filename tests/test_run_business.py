@@ -37,6 +37,8 @@ def test_run_business_writes_every_output(raw_frames: RawFrames, biz_cfg: Foreca
     assert len(intervals) == 6 * 28 and (intervals["lower_95"] <= intervals["upper_95"]).all()
     submission = pd.read_csv(biz_cfg.paths.submission)
     assert len(submission) == 6 * 28 and submission["id"].is_unique and (submission["sales"] >= 0).all()
+    backtest = pd.read_csv(biz_cfg.paths.backtest_forecasts)
+    assert len(backtest) == 3 * 6 * 28 and {"actual", "benchmark", "baseline", "model"} <= set(backtest.columns)
     names = {p.name for p in biz_cfg.paths.figures_dir.glob("*.png")}
     assert {"business_frontier.png", "business_costs.png", "business_coverage.png", "forecast_fan_chart.png"} <= names
     assert json.loads(biz_cfg.paths.business_summary.read_text())["plan"]["service_level"] == summary["plan"]["service_level"]

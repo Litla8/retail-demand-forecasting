@@ -120,6 +120,26 @@ class PathsConfig:
         """Kaggle-format submission (id, sales) for the test period."""
         return self.reports_dir / "submission.csv"
 
+    @property
+    def backtest_forecasts(self) -> Path:
+        """Validation-window actuals and forecasts of the main forecasters, for the dashboard."""
+        return self.reports_dir / "backtest_forecasts.csv.gz"
+
+    @property
+    def archive_dir(self) -> Path:
+        """Folder with dated copies of earlier forecasts, evaluated by the monitor."""
+        return self.reports_dir / "archive"
+
+    @property
+    def monitoring_log(self) -> Path:
+        """Running log of how earlier forecasts performed on the actuals that arrived later."""
+        return self.reports_dir / "monitoring_log.csv"
+
+    @property
+    def dashboard_dir(self) -> Path:
+        """Compact, committable data bundle read by the dashboard."""
+        return Path("dashboard_data")
+
 
 @dataclass(frozen=True)
 class EdaConfig:
@@ -403,6 +423,29 @@ class BusinessConfig:
 
 
 @dataclass(frozen=True)
+class MonitorConfig:
+    """Settings for the monthly accuracy check of earlier forecasts.
+
+    Attributes:
+        min_days: Realised days needed before a forecast is judged.
+        wape_tolerance: Alert when realised WAPE exceeds the backtest WAPE by more than this fraction.
+        min_coverage_95: Alert when fewer than this share of actuals fall inside the nominal 95% interval
+            (a floor well below 0.95, because the backtest showed the intervals run narrow).
+    """
+
+    min_days: int = 14
+    wape_tolerance: float = 0.20
+    min_coverage_95: float = 0.80
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.min_days < 1 or self.wape_tolerance < 0:
+            raise ValueError("min_days must be positive and wape_tolerance non-negative")
+        if not 0 < self.min_coverage_95 < 1:
+            raise ValueError("min_coverage_95 must be strictly between 0 and 1")
+
+
+@dataclass(frozen=True)
 class ForecastConfig:
     """Business, evaluation and data-preparation settings.
 
@@ -449,6 +492,7 @@ class ForecastConfig:
     gbm: GbmConfig = field(default_factory=GbmConfig)
     tune: TuneConfig = field(default_factory=TuneConfig)
     business: BusinessConfig = field(default_factory=BusinessConfig)
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
 
     def __post_init__(self) -> None:
         """Fail loudly on inconsistent settings."""

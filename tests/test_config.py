@@ -15,6 +15,7 @@ from forecast.config import (
     EdaConfig,
     ForecastConfig,
     GbmConfig,
+    MonitorConfig,
     PathsConfig,
     StatisticalConfig,
     TuneConfig,
@@ -46,6 +47,8 @@ def test_derived_paths() -> None:
     assert paths.step7_summary == Path("reports/step7_summary.json")
     assert paths.gbm_params == Path("models/gbm_params.json")
     assert paths.business_summary == Path("reports/business_summary.json")
+    assert paths.backtest_forecasts == Path("reports/backtest_forecasts.csv.gz")
+    assert paths.archive_dir == Path("reports/archive") and paths.dashboard_dir == Path("dashboard_data")
     assert paths.reorder_plan == Path("reports/reorder_plan.csv") and paths.submission == Path("reports/submission.csv")
 
 
@@ -113,3 +116,8 @@ def test_inconsistent_settings_fail_loudly() -> None:
         replace(ForecastConfig(), negative_sales="ignore")
     with pytest.raises(ValueError, match="min_history_days"):
         replace(ForecastConfig(), min_history_days=0)
+
+
+def test_monitor_defaults() -> None:
+    monitor = MonitorConfig()
+    assert monitor.min_days == 14 and monitor.wape_tolerance == 0.2 and ForecastConfig().monitor == monitor
