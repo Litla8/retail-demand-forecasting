@@ -1,5 +1,5 @@
 # Retail Sales & Demand Forecasting
-
+**Live dashboard:** https://retail-demand-forecast-lalit.streamlit.app/
 Forecast daily unit sales for every store and item for the next 90 days, so a retail chain can plan
 inventory, staffing and promotions. Dataset: Kaggle *Store Item Demand Forecasting Challenge*
 (10 stores x 50 items = 500 series, 2013-2017).
