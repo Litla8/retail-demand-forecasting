@@ -22,6 +22,9 @@ from forecast.data import load_prepared
 from forecast.logging_utils import configure_logging
 from forecast.wide import WideData, to_wide
 
+MONITOR_COLUMNS = ["archive", "first_day", "last_realized_day", "realized_days", "wape", "bias_pct", "coverage_80",
+                   "coverage_95", "expected_wape", "alert", "reasons"]
+
 logger = logging.getLogger(__name__)
 ARCHIVE_PATTERN = "forecast_intervals_*.csv"
 
@@ -94,7 +97,7 @@ def run_monitor(cfg: ForecastConfig, df: Optional[pd.DataFrame] = None) -> List[
                    path.name, result["wape"], result["coverage_95"], result["reasons"])
         results.append(result)
     cfg.paths.monitoring_log.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(results).to_csv(cfg.paths.monitoring_log, index=False)
+    pd.DataFrame(results, columns=MONITOR_COLUMNS).to_csv(cfg.paths.monitoring_log, index=False)  # header even if empty
     return results
 
 

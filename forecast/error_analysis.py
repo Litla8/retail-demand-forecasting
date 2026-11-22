@@ -96,7 +96,7 @@ def calendar_tables(actual: np.ndarray, forecast: np.ndarray, dates: pd.Datetime
     """WAPE and bias by weekday (Monday = 0), month and week of the month."""
     dom = pd.cut(dates.day.to_numpy(), DOM_BINS, labels=DOM_LABELS)
     return {
-        "weekday": _column_groups(actual, forecast, dates.dayofweek.to_numpy()).rename(columns={"key": "weekday"}),
+        "weekday": _column_groups(actual, forecast, dates.day_of_week.to_numpy()).rename(columns={"key": "weekday"}),
         "month": _column_groups(actual, forecast, dates.month.to_numpy()).rename(columns={"key": "month"}),
         "day_of_month": _column_groups(actual, forecast, dom).rename(columns={"key": "group"}),
     }

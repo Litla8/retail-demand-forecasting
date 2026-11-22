@@ -75,7 +75,7 @@ def noise_floor(actual: np.ndarray, future_dates: pd.DatetimeIndex) -> Dict[str,
     Raises:
         ValueError: If no day has at least one other matching day.
     """
-    key = (future_dates.year.to_numpy() * 100 + future_dates.month.to_numpy()) * 10 + future_dates.dayofweek.to_numpy()
+    key = (future_dates.year.to_numpy() * 100 + future_dates.month.to_numpy()) * 10 + future_dates.day_of_week.to_numpy()
     _, codes = np.unique(key, return_inverse=True)
     loo = np.full(actual.shape, np.nan)
     inflation = np.ones(actual.shape[1])

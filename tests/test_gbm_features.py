@@ -58,7 +58,7 @@ def test_forecast_rows_layout() -> None:
     features, scale = builder.forecast_rows(future)
     assert features.shape == (4 * 14, len(feature_names(CFG))) and scale.shape == (56,)
     assert features["horizon"].to_numpy()[:14].tolist() == list(range(1, 15))  # series-major, days ascending
-    assert features["dayofweek"].to_numpy()[:14].tolist() == future.dayofweek.tolist()
+    assert features["dayofweek"].to_numpy()[:14].tolist() == future.day_of_week.tolist()
 
 
 def test_series_ids_are_optional() -> None:

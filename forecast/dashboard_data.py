@@ -112,6 +112,16 @@ class Bundle:
     monitoring: pd.DataFrame
 
 
+def read_monitoring(path: Path) -> pd.DataFrame:
+    """The monitoring log, or an empty frame if the file is missing, empty or has no rows yet."""
+    if not Path(path).is_file():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:  # a log written before any forecast could be judged
+        return pd.DataFrame()
+
+
 def load_bundle(path: Path) -> Bundle:
     """Read a bundle written by :func:`export_bundle`.
 
@@ -129,7 +139,7 @@ def load_bundle(path: Path) -> Bundle:
         plan=pd.read_csv(path / "reorder_plan.csv", parse_dates=["order_date"]),
         backtest=pd.read_csv(path / "backtest_forecasts.csv.gz", parse_dates=["date"]),
         summaries=json.loads((path / "summaries.json").read_text(encoding="utf-8")),
-        monitoring=pd.read_csv(monitoring) if monitoring.is_file() else pd.DataFrame(),
+        monitoring=read_monitoring(monitoring),
     )
 
 
@@ -160,7 +170,7 @@ def model_comparison(summaries: Mapping[str, Any]) -> pd.DataFrame:
 
 def backtest_errors(backtest: pd.DataFrame, by: Any, model: str = "model") -> pd.DataFrame:
     """WAPE and bias of one forecaster grouped by a column (store, item, window_end, weekday ...)."""
-    work = backtest.assign(weekday=backtest["date"].dt.dayofweek, month=backtest["date"].dt.month)
+    work = backtest.assign(weekday=backtest["date"].dt.day_of_week, month=backtest["date"].dt.month)
     work["abs_err"] = (work[model] - work["actual"]).abs()
     work["signed"] = work[model] - work["actual"]
     grouped = work.groupby(by)[["abs_err", "signed", "actual"]].sum()

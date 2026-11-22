@@ -132,7 +132,7 @@ def month_weekday_profile(history: np.ndarray, history_dates: pd.DatetimeIndex,
     same_cell = (
         (history_dates.year.to_numpy()[None, :] == future_dates.year.to_numpy()[:, None] - 1)
         & (history_dates.month.to_numpy()[None, :] == future_dates.month.to_numpy()[:, None])
-        & (history_dates.dayofweek.to_numpy()[None, :] == future_dates.dayofweek.to_numpy()[:, None])
+        & (history_dates.day_of_week.to_numpy()[None, :] == future_dates.day_of_week.to_numpy()[:, None])
     ).astype(float)
     counts = same_cell.sum(axis=1, keepdims=True)
     if (counts == 0).any():
@@ -163,7 +163,7 @@ def month_weekday_profile_multi_year(history: np.ndarray, history_dates: pd.Date
         same_cell = (
             (history_dates.year.to_numpy()[None, :] == future_dates.year.to_numpy()[:, None] - k)
             & (history_dates.month.to_numpy()[None, :] == future_dates.month.to_numpy()[:, None])
-            & (history_dates.dayofweek.to_numpy()[None, :] == future_dates.dayofweek.to_numpy()[:, None])
+            & (history_dates.day_of_week.to_numpy()[None, :] == future_dates.day_of_week.to_numpy()[:, None])
         ).astype(float)
         counts = same_cell.sum(axis=1, keepdims=True)
         if (counts == 0).any():

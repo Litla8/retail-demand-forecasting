@@ -17,14 +17,14 @@ MONDAY, THURSDAY, SUNDAY = 0, 3, 6
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> pd.Timestamp:
     """The n-th given weekday of a month (n = 1 for the first)."""
     first = pd.Timestamp(year=year, month=month, day=1)
-    offset = (weekday - first.dayofweek) % 7
+    offset = (weekday - first.day_of_week) % 7
     return first + pd.Timedelta(days=offset + 7 * (n - 1))
 
 
 def _last_weekday(year: int, month: int, weekday: int) -> pd.Timestamp:
     """The last given weekday of a month."""
     last = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
-    return last - pd.Timedelta(days=(last.dayofweek - weekday) % 7)
+    return last - pd.Timedelta(days=(last.day_of_week - weekday) % 7)
 
 
 def holiday_calendar(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:

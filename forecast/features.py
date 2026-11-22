@@ -27,14 +27,14 @@ def add_calendar_features(df: pd.DataFrame, date_col: str = "date") -> pd.DataFr
 
     out = df.copy()
     dates = out[date_col]
-    out["dayofweek"] = dates.dt.dayofweek.astype("int8")  # Monday = 0
+    out["dayofweek"] = dates.dt.day_of_week.astype("int8")  # Monday = 0
     out["day"] = dates.dt.day.astype("int8")
     out["month"] = dates.dt.month.astype("int8")
     out["year"] = dates.dt.year.astype("int16")
     out["quarter"] = dates.dt.quarter.astype("int8")
-    out["dayofyear"] = dates.dt.dayofyear.astype("int16")
+    out["dayofyear"] = dates.dt.day_of_year.astype("int16")
     out["weekofyear"] = dates.dt.isocalendar().week.astype("int8")
-    out["is_weekend"] = (dates.dt.dayofweek >= 5).astype("int8")
+    out["is_weekend"] = (dates.dt.day_of_week >= 5).astype("int8")
     out["is_month_start"] = dates.dt.is_month_start.astype("int8")
     out["is_month_end"] = dates.dt.is_month_end.astype("int8")
     out["t"] = (dates - dates.min()).dt.days.astype("int16")

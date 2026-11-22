@@ -53,7 +53,7 @@ class FeatureBuilder:
         self.first_year = int(dates.year.min())
         self.n_years = int(dates.year.max()) - self.first_year + 1
         year, month = dates.year.to_numpy() - self.first_year, dates.month.to_numpy() - 1
-        cell_id = (year * 12 + month) * 7 + dates.dayofweek.to_numpy()
+        cell_id = (year * 12 + month) * 7 + dates.day_of_week.to_numpy()
         month_id = year * 12 + month
         self.cell_sum = np.stack([np.bincount(cell_id, weights=row, minlength=self.n_years * 84) for row in history])
         self.cell_count = np.bincount(cell_id, minlength=self.n_years * 84).astype(float)
@@ -112,7 +112,7 @@ class FeatureBuilder:
                                      self.history[series, np.clip(lag, 0, self.history.shape[1] - 1)], np.nan) / scale
 
         year = target_dates.year.to_numpy() - self.first_year
-        month, weekday = target_dates.month.to_numpy() - 1, target_dates.dayofweek.to_numpy()
+        month, weekday = target_dates.month.to_numpy() - 1, target_dates.day_of_week.to_numpy()
         for k in range(1, cfg.profile_years + 1):
             cell = self._lookup(self.cell_sum, self.cell_count, series, ((year - k) * 12 + month) * 7 + weekday)
             month_mean = self._lookup(self.month_sum, self.month_count, series, (year - k) * 12 + month)

@@ -22,7 +22,7 @@ SMALL = replace(GbmConfig(engine="hist_gb"), n_estimators=120, min_child_samples
 
 def _series(dates: pd.DatetimeIndex, noise: float = 0.0, seed: int = 42) -> np.ndarray:
     year_growth = 1.05 ** (dates.year.to_numpy() - 2014)
-    shape = MONTH_LEVEL[dates.month.to_numpy() - 1] * WEEKDAY_FACTOR[dates.dayofweek.to_numpy()] * year_growth
+    shape = MONTH_LEVEL[dates.month.to_numpy() - 1] * WEEKDAY_FACTOR[dates.day_of_week.to_numpy()] * year_growth
     rng = np.random.default_rng(seed)
     return SCALES[:, None] * shape[None, :] * (1 + rng.normal(0, noise, (3, len(dates))))
 

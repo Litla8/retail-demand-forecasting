@@ -28,7 +28,7 @@ WEEKDAY_FACTOR = np.array([0.8, 0.9, 0.9, 1.0, 1.1, 1.2, 1.3])
 def _staircase(dates: pd.DatetimeIndex, noise: float, seed: int = 42) -> np.ndarray:
     """Sales with a flat level per month, a weekly pattern and small noise."""
     rng = np.random.default_rng(seed)
-    base = MONTH_LEVEL[dates.month.to_numpy() - 1] * WEEKDAY_FACTOR[dates.dayofweek.to_numpy()]
+    base = MONTH_LEVEL[dates.month.to_numpy() - 1] * WEEKDAY_FACTOR[dates.day_of_week.to_numpy()]
     return base + rng.normal(0, noise, len(dates))
 
 
@@ -123,11 +123,11 @@ def test_weekly_models_forecast_a_stable_series(name: str) -> None:
     pytest.importorskip("statsmodels")
     dates = pd.date_range("2016-01-01", periods=500, freq="D")
     rng = np.random.default_rng(42)
-    y = 100 * WEEKDAY_FACTOR[dates.dayofweek.to_numpy()] + rng.normal(0, 2, 500)
+    y = 100 * WEEKDAY_FACTOR[dates.day_of_week.to_numpy()] + rng.normal(0, 2, 500)
     future = pd.date_range(dates[-1] + pd.Timedelta(days=1), periods=28)
     model = build_statistical_models(StatisticalConfig(models=(name,)))[name]
     forecast = model(y[None, :], dates, future)
-    truth = 100 * WEEKDAY_FACTOR[future.dayofweek.to_numpy()]
+    truth = 100 * WEEKDAY_FACTOR[future.day_of_week.to_numpy()]
     assert forecast.shape == (1, 28) and model.failures == 0
     assert wape(truth, forecast[0]) < 12.0  # the weekly pattern is learned
 
@@ -137,7 +137,7 @@ def test_month_aware_models_learn_the_monthly_steps(name: str) -> None:
     library = "statsmodels" if name.startswith("sarimax") else "prophet"
     pytest.importorskip(library)
     y = _staircase(DATES, noise=2.0)
-    truth = MONTH_LEVEL[FUTURE.month.to_numpy() - 1] * WEEKDAY_FACTOR[FUTURE.dayofweek.to_numpy()]
+    truth = MONTH_LEVEL[FUTURE.month.to_numpy() - 1] * WEEKDAY_FACTOR[FUTURE.day_of_week.to_numpy()]
     model = build_statistical_models(StatisticalConfig(models=(name,)))[name]
     forecast = model(y[None, :], DATES, FUTURE)
     # December level is 60 but January is 50 and February 55: a model without month steps would miss badly.

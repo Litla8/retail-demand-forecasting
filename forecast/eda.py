@@ -74,7 +74,7 @@ def yearly_shape(total: pd.Series) -> pd.DataFrame:
     smooth = total.rolling(7, center=True).mean()
     annual_mean = total.groupby(total.index.year).transform("mean")
     relative = smooth / annual_mean
-    shape = relative.groupby([relative.index.year, relative.index.dayofyear]).mean().unstack(0)
+    shape = relative.groupby([relative.index.year, relative.index.day_of_year]).mean().unstack(0)
     return shape.iloc[:365]
 
 
@@ -87,7 +87,7 @@ def same_month_weekday_ratio(total: pd.Series) -> pd.Series:
     and invent holiday effects, for example around Thanksgiving.) The day itself is excluded
     from its own reference.
     """
-    grouped = total.groupby([total.index.year, total.index.month, total.index.dayofweek])
+    grouped = total.groupby([total.index.year, total.index.month, total.index.day_of_week])
     others = (grouped.transform("sum") - total) / (grouped.transform("count") - 1)
     return total / others
 

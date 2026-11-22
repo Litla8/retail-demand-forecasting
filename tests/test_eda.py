@@ -60,7 +60,7 @@ def test_holiday_effects_flags_only_the_injected_holiday(cfg: ForecastConfig) ->
     total = pd.Series(100.0 * (1 + rng.normal(0, 0.002, len(index))), index=index)
     for year in (2013, 2014, 2015, 2016):  # Thanksgiving is the 4th Thursday of November
         first = pd.Timestamp(year=year, month=11, day=1)
-        thanksgiving = first + pd.Timedelta(days=(3 - first.dayofweek) % 7 + 21)
+        thanksgiving = first + pd.Timedelta(days=(3 - first.day_of_week) % 7 + 21)
         total[thanksgiving] *= 1.25
     table, noise = holiday_effects(total, cfg)
     assert table.loc[table["material"], "holiday"].tolist() == ["Thanksgiving"]

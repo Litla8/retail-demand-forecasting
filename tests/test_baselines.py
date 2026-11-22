@@ -29,9 +29,9 @@ def test_naive_and_moving_average() -> None:
 
 
 def test_seasonal_naive_7_matches_weekdays() -> None:
-    weekday_value = np.tile(DAYS.dayofweek.to_numpy(dtype=float) * 100, (2, 1))  # value depends on weekday only
+    weekday_value = np.tile(DAYS.day_of_week.to_numpy(dtype=float) * 100, (2, 1))  # value depends on weekday only
     forecast = B.seasonal_naive_7(weekday_value, DAYS, FUTURE)
-    assert np.array_equal(forecast[0], FUTURE.dayofweek.to_numpy() * 100.0)  # each day copies its weekday
+    assert np.array_equal(forecast[0], FUTURE.day_of_week.to_numpy() * 100.0)  # each day copies its weekday
     ramp = B.seasonal_naive_7(_ramp(), DAYS, FUTURE)
     assert ramp[0, 0] == len(DAYS) - 7 and ramp[0, 6] == len(DAYS) - 1  # step 1 copies 7 days back, step 7 the last day
 
@@ -49,7 +49,7 @@ def test_seasonal_naive_364_copies_the_same_weekday_last_year() -> None:
     forecast = B.seasonal_naive_364(history, DAYS, FUTURE)
     assert np.array_equal(forecast[0], np.arange(len(DAYS) - 364, len(DAYS) - 364 + 10, dtype=float))
     source = DAYS[len(DAYS) - 364: len(DAYS) - 364 + 10]
-    assert (source.dayofweek.to_numpy() == FUTURE.dayofweek.to_numpy()).all()  # same weekday
+    assert (source.day_of_week.to_numpy() == FUTURE.day_of_week.to_numpy()).all()  # same weekday
     with pytest.raises(ValueError, match="too short"):
         B.seasonal_naive_364(history[:, :300], DAYS[:300], pd.date_range(DAYS[299] + pd.Timedelta(days=1), periods=5))
 
@@ -66,10 +66,10 @@ def test_growth_ratio_recovers_a_known_growth_rate() -> None:
 
 def test_month_weekday_profile_returns_last_years_cell_mean() -> None:
     month_level = np.arange(1, 13) * 10.0
-    weekday_factor = 1 + DAYS.dayofweek.to_numpy() / 10
+    weekday_factor = 1 + DAYS.day_of_week.to_numpy() / 10
     history = np.tile(month_level[DAYS.month.to_numpy() - 1] * weekday_factor, (2, 1))
     forecast = B.month_weekday_profile(history, DAYS, FUTURE)
-    expected = month_level[FUTURE.month.to_numpy() - 1] * (1 + FUTURE.dayofweek.to_numpy() / 10)
+    expected = month_level[FUTURE.month.to_numpy() - 1] * (1 + FUTURE.day_of_week.to_numpy() / 10)
     assert np.allclose(forecast[0], expected)  # last year's level and weekday factor, noise-free
     with_growth = B.month_weekday_profile_growth(history, DAYS, FUTURE, window=91)
     assert np.allclose(with_growth, forecast * B.growth_ratio(history, 91)[:, None])  # profile x growth factor
@@ -77,9 +77,9 @@ def test_month_weekday_profile_returns_last_years_cell_mean() -> None:
 
 def test_multi_year_profile_follows_a_steadily_growing_staircase() -> None:
     year_growth = 1.1 ** (DAYS.year.to_numpy() - 2014)  # every year is 10% above the one before
-    pattern = MONTH_LEVEL[DAYS.month.to_numpy() - 1] * WEEKDAY_FACTOR[DAYS.dayofweek.to_numpy()]
+    pattern = MONTH_LEVEL[DAYS.month.to_numpy() - 1] * WEEKDAY_FACTOR[DAYS.day_of_week.to_numpy()]
     history = np.tile(pattern * year_growth, (2, 1))
-    truth = (MONTH_LEVEL[FUTURE.month.to_numpy() - 1] * WEEKDAY_FACTOR[FUTURE.dayofweek.to_numpy()]) * 1.1 ** 3
+    truth = (MONTH_LEVEL[FUTURE.month.to_numpy() - 1] * WEEKDAY_FACTOR[FUTURE.day_of_week.to_numpy()]) * 1.1 ** 3
     forecast = B.month_weekday_profile_multi_year(history, DAYS, FUTURE, years=2, window=91)
     assert np.allclose(forecast[0], truth, rtol=0.05)  # both past years point to the same 2017 level
     with pytest.raises(ValueError, match="year\\(s\\) back"):

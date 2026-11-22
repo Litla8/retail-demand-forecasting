@@ -37,7 +37,7 @@ def raw_frames() -> RawFrames:
     dates = pd.date_range("2013-01-01", periods=N_DAYS, freq="D")
     series = pd.MultiIndex.from_product([[1, 2], [1, 2, 3]], names=["store", "item"]).to_frame(index=False)
     train = series.merge(pd.DataFrame({"date": dates}), how="cross")
-    weekly = 1.0 + 0.2 * np.sin(2 * np.pi * train["date"].dt.dayofweek / 7)
+    weekly = 1.0 + 0.2 * np.sin(2 * np.pi * train["date"].dt.day_of_week / 7)
     train["sales"] = rng.poisson(20 * weekly).astype("int64")
     train["date"] = train["date"].dt.strftime("%Y-%m-%d")  # CSV files store dates as text
     train = train[["date", "store", "item", "sales"]]

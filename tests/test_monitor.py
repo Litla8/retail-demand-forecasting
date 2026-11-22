@@ -11,7 +11,7 @@ import pytest
 from forecast.business import interval_table
 from forecast.config import ForecastConfig, MonitorConfig
 from forecast.data import RawFrames
-from forecast.monitor import archive_forecast, evaluate_archived, run_monitor
+from forecast.monitor import MONITOR_COLUMNS, archive_forecast, evaluate_archived, run_monitor
 from forecast.prepare import build_prepared_frame
 from forecast.wide import to_wide
 
@@ -94,3 +94,14 @@ def test_monitor_config_validation() -> None:
         MonitorConfig(min_days=0)
     with pytest.raises(ValueError, match="min_coverage_95"):
         MonitorConfig(min_coverage_95=1.0)
+
+
+def test_log_has_a_header_even_when_nothing_could_be_judged(raw_frames: RawFrames, cfg: ForecastConfig) -> None:
+    """With no archived forecasts the log still has its columns, so it can be read back."""
+    prepared = build_prepared_frame(raw_frames, cfg)[0]
+    cfg.paths.archive_dir.mkdir(parents=True, exist_ok=True)
+    cfg.paths.gbm_params.parent.mkdir(parents=True, exist_ok=True)
+    cfg.paths.gbm_params.write_text(json.dumps({"mean_wape": 10.0}))
+    assert run_monitor(cfg, prepared) == []
+    log = pd.read_csv(cfg.paths.monitoring_log)  # used to raise EmptyDataError
+    assert list(log.columns) == MONITOR_COLUMNS and log.empty

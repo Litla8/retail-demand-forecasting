@@ -17,6 +17,7 @@ from forecast.dashboard_data import (
     backtest_errors,
     export_bundle,
     load_bundle,
+    read_monitoring,
     model_comparison,
     plot_backtest_series,
     plot_error_bars,
@@ -137,3 +138,14 @@ def test_chart_functions_return_figures(pipeline_outputs, cfg: ForecastConfig, t
     assert len(figures[0].axes[0].get_lines()) == 2 and figures[1].axes[0].get_title() == "title"
     for fig in figures:
         plt.close(fig)
+
+
+def test_read_monitoring_tolerates_missing_empty_and_header_only_logs(tmp_path) -> None:
+    assert read_monitoring(tmp_path / "missing.csv").empty
+    empty = tmp_path / "empty.csv"
+    empty.write_text("")  # what an old run wrote when nothing could be judged yet
+    assert read_monitoring(empty).empty
+    header_only = tmp_path / "header.csv"
+    header_only.write_text("archive,wape\n")
+    frame = read_monitoring(header_only)
+    assert frame.empty and list(frame.columns) == ["archive", "wape"]

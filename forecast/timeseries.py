@@ -136,10 +136,10 @@ def adf_kpss(x: Sequence[float], alpha: float = 0.05) -> Dict[str, float]:
     values = np.asarray(x, dtype=float)
     if len(values) < 30 or not np.isfinite(values).all():
         raise ValueError("Need at least 30 finite observations for stationarity tests")
-    adf_stat, adf_p = adfuller(values, regression="c", autolag="AIC")[:2]
     with warnings.catch_warnings():
-        # KPSS reports p-values clipped to the table range [0.01, 0.10] with a warning.
+        # KPSS reports p-values clipped to the table range [0.01, 0.10]; adfuller warns about its return type.
         warnings.simplefilter("ignore")
+        adf_stat, adf_p = adfuller(values, regression="c", autolag="AIC")[:2]
         kpss_stat, kpss_p = kpss(values, regression="c", nlags="auto")[:2]
     return {
         "adf_stat": float(adf_stat), "adf_p": float(adf_p),
